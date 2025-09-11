@@ -1,10 +1,17 @@
 """ Funciones principales """
 # GuardianUnivalle_Benito_Yucra/__init__.py
 
-from .encryption import encrypt_data, decrypt_data
-from .web_protection import sanitize_input, check_csrf
-from .dos_protection import rate_limiter
-from .malware_check import scan_malware
+"""
+Paquete principal de GuardianUnivalle.
+Incluye módulos de criptografía, detección de ataques, mitigación, auditoría y puntuación de amenazas.
+"""
+from . import criptografia
+from . import detectores
+from . import mitigacion
+from . import auditoria
+from . import puntuacion
+from . import middleware_web
+from . import utilidades
 
 def protect_app():
     """

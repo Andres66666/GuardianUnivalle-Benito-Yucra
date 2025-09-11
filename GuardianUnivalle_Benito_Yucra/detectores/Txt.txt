@@ -1,0 +1,24 @@
+
+Fórmula compuesta de amenaza S
+La fórmula general para puntuar la amenaza global combina todas las detecciones:
+
+
+S=Ssql​+Sxss​+Scsrf​+Skeylogger​+Sdos​
+
+donde: 
+Ssql=Wsql​* detecciones_sql
+Sxss=Wxss​* detecciones_xss
+Scsrf​=Wcsrf​* detecciones_csrf
+Skeylogger​=Wkeylogger* Proceso_sospechosos
+
+Sdos​= Wdos*(tasa_peticion/limite)
+
+
+
+    *w_* = peso de cada tipo de ataque (configurable según criticidad).
+    *detecciones_* = número de incidencias detectadas en tiempo real.
+Base criptográfica usada:
+AES-256, AES-GCM → cifrado de datos y logs.
+ChaCha20-Poly1305 → cifrado rápido y autenticado de registros.
+SHA-256 / SHA-512 → integridad de logs y entradas.
+PBKDF2 / Argon2 → derivación segura de tokens y claves.
