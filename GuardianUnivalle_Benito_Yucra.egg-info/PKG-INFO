@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: GuardianUnivalle-Benito-Yucra
+Version: 0.1.0
+Summary: Librería de seguridad automática para aplicaciones frontend y backend
+Author-email: Benito Yucra <tu_email@dominio.com>
+License: MIT
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Dynamic: license-file
+
+<!-- Información de la librería -->
