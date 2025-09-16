@@ -1,12 +1,3 @@
-crear un whatsap con bontones y lista par aresponder automaticamente
-
-# Comandos para subir al repositorio de GitHup
-
-ojo entrar a esta ruta para cambiar a los usuarios de git 
-Panel de control\Todos los elementos de Panel de control\Administrador de credenciales
-
-📦 RESUMEN RÁPIDO (puro comandos)
-
 
 git config --global user.name "Andrés66666"
 git config --global user.email "cya2024773@est.univalle.edu"
@@ -15,39 +6,5 @@ git init
 git status
 git add .
 git commit -m "Primer commit"
-git remote add origin https://github.com/Andres66666/FrontendEcuacion.git
-git push -u origin main
-
-
-
-
-
-
-git config --global user.name "Andrés66666"
-git config --global user.email "cya2024773@est.univalle.edu"
-
-git init
-git status
-git add .
-git commit -m "Primer commit"
-git remote add origin https://github.com/Andres66666/backendEcuacion.git
-git push -u origin main
-
-⚡ ¡Y listo, tu proyecto estará en GitHub! ⚡
-
-
-
-echo "# FrontendEcuacion" >> README.md
-git init
-git add README.md
-git commit -m "first commit"
-git branch -M main
-git remote add origin https://github.com/Andres66666/FrontendEcuacion.git
-git push -u origin main
-
-
-
-
-git remote add origin https://github.com/Andres66666/FrontendEcuacion.git
-git branch -M main
+git remote add origin https://github.com/Andres66666/GuardianUnivalle-Benito-Yucra.git
 git push -u origin main

@@ -1,25 +1,75 @@
+# detector_sql.py
 import re
-from ..auditoria.registro_auditoria import registrar_evento
+import json
+import logging
+from typing import Tuple
+from django.http import JsonResponse
+from django.utils.deprecation import MiddlewareMixin
 
-def detectar_inyeccion_sql(consulta: str) -> bool:
-    """Detecta patrones típicos de SQL Injection"""
-    patrones = [
-        r"(\bor\b|\band\b).*(=|like)",
-        r"(--|#|;)",
-        r"(union(\s)+select)",
-        r"(drop|delete|insert|update).*",
-    ]
-    for p in patrones:
-        if re.search(p, consulta, re.IGNORECASE):
-            registrar_evento("SQL Injection", f"Ataque detectado: {consulta}")
-            return True
-    return False
-""" 
-Algoritmos relacionados:
-    *Se puede aplicar cifrado AES-256 para guardar las consultas auditadas.
-    *Hash SHA-256 para integridad de registros.
-*Contribución a fórmula de amenaza S:
-        S_sql = w_sql * detecciones_sql
-        S_sql = 0.5 * 3
-donde w_sql es peso asignado a SQL Injection y detecciones_sql es la cantidad de patrones detectados.
- """
+logger = logging.getLogger("sqlidefense")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+# ---------- Patrones de ataques SQL ----------
+PATTERNS = [
+    (re.compile(r"\bunion\b\s+(all\s+)?\bselect\b", re.I), "UNION SELECT"),
+    (
+        re.compile(r"\bselect\b.*\bfrom\b.*\bwhere\b.*\b(or|and)\b.*=", re.I),
+        "SELECT con OR/AND",
+    ),
+    (re.compile(r"\b(or|and)\s+\d+\s*=\s*\d+", re.I), "OR/AND 1=1"),
+    (
+        re.compile(r"\b(drop|truncate|delete|insert|update)\b", re.I),
+        "Manipulación de tabla",
+    ),
+    (re.compile(r"(--|#|;)", re.I), "Comentario o terminador sospechoso"),
+    (re.compile(r"exec\s*\(", re.I), "Ejecución de procedimiento"),
+]
+
+
+# ---------- Helpers ----------
+def extract_payload_text(request) -> str:
+    parts = []
+    content_type = request.META.get("CONTENT_TYPE", "")
+    try:
+        if "application/json" in content_type:
+            body_json = json.loads(request.body.decode("utf-8") or "{}")
+            parts.append(json.dumps(body_json))
+        else:
+            parts.append(request.body.decode("utf-8", errors="ignore"))
+    except Exception:
+        pass
+    if request.META.get("QUERY_STRING"):
+        parts.append(request.META.get("QUERY_STRING"))
+    parts.append(request.META.get("HTTP_USER_AGENT", ""))
+    parts.append(request.META.get("HTTP_REFERER", ""))
+    return " ".join([p for p in parts if p])
+
+
+def detect_sqli_text(text: str) -> Tuple[bool, list]:
+    matches = []
+    for patt, message in PATTERNS:
+        if patt.search(text):
+            matches.append(message)
+    return (len(matches) > 0, matches)
+
+
+# ---------- Middleware ----------
+class SQLIDefenseMiddleware(MiddlewareMixin):
+    def process_request(self, request):
+        text = extract_payload_text(request)
+        if not text:
+            return None
+
+        flagged, matches = detect_sqli_text(text)
+        if flagged:
+            logger.warning(f"Ataque detectado: {matches}, payload: {text}")
+            return JsonResponse(
+                {"mensaje": "Ataque detectado", "tipos": matches}, status=403
+            )
+
+        return None

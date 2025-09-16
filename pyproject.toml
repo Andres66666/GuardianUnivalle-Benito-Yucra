@@ -3,12 +3,34 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "GuardianUnivalle-Benito-Yucra"
-version = "0.1.0"
-description = "Librería de seguridad automática para aplicaciones frontend y backend"
+name = "GuardianUnivalle-Benito-Yucra"  # usar mayúsculas consistente
+version = "0.1.12"
+description = "Middleware y detectores de seguridad (SQLi, XSS, CSRF, DoS, Keylogger) para Django/Flask"
 authors = [
-  { name="Benito Yucra", email="tu_email@dominio.com" }
+    { name = "Andres Benito Calle Yucra", email = "benitoandrescalle035@gmail.com" }
 ]
 readme = "README.md"
-license = { text="MIT" }
+license = { text = "MIT" }
 requires-python = ">=3.8"
+dependencies = [
+    "redis>=4.0",
+    "django>=3.2"
+]
+keywords = ["security", "django", "flask", "sqli", "xss", "csrf", "middleware"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Security",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Framework :: Django",
+    "Framework :: Flask"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["GuardianUnivalle*"]
+
+[project.urls]
+Homepage = "https://pypi.org/project/guardianunivalle-benito-yucra/"
+Bug_Tracker = "https://github.com/Andyyupy/guardianunivalle-benito-yucra/issues"
