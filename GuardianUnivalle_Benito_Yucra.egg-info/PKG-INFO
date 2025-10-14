@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: GuardianUnivalle-Benito-Yucra
-Version: 0.1.38
+Version: 0.1.63
 Summary: Middleware y detectores de seguridad (SQLi, XSS, CSRF, DoS, Keylogger) para Django/Flask
 Author-email: Andres Benito Calle Yucra <benitoandrescalle035@gmail.com>
 License: MIT
