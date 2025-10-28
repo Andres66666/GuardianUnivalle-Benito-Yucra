@@ -1,10 +1,12 @@
-# CSRF defense (versión reforzada)
+# csrf_defense.py
+# GuardianUnivalle_Benito_Yucra/detectores/csrf_defense.py
+
 from __future__ import annotations
 import secrets
 import logging
 import re
 import json
-from typing import List
+from typing import List, Dict, Any
 from urllib.parse import urlparse
 from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
@@ -21,20 +23,41 @@ CSRF_HEADER_NAMES = ("HTTP_X_CSRFTOKEN", "HTTP_X_CSRF_TOKEN")
 CSRF_COOKIE_NAME = getattr(settings, "CSRF_COOKIE_NAME", "csrftoken")
 POST_FIELD_NAME = "csrfmiddlewaretoken"
 
-# Patrón de Content-Type sospechoso
+# Patrón de Content-Type sospechoso - EXPANDIDO
 SUSPICIOUS_CT_PATTERNS = [
     re.compile(r"text/plain", re.I),
     re.compile(r"application/x-www-form-urlencoded", re.I),
     re.compile(r"multipart/form-data", re.I),
+    re.compile(r"application/json", re.I),
+    re.compile(r"text/html", re.I),  # Agregado para HTML CSRF
 ]
 
-# Parámetros sensibles típicos de CSRF
+# Parámetros sensibles típicos de CSRF - EXPANDIDO
 SENSITIVE_PARAMS = [
-    "password", "csrfmiddlewaretoken", "token", "amount", "transfer", "delete", "update"
+    "password", "csrfmiddlewaretoken", "token", "amount", "transfer", "delete", "update", "action", "email", "username"
 ]
+
+# Campos sensibles: ANALIZAMOS COMPLETAMENTE SIN DESCUENTO PARA ROBUSTEZ MÁXIMA
+SENSITIVE_FIELDS = ["password", "csrfmiddlewaretoken", "token", "auth", "email", "username"]
 
 CSRF_DEFENSE_MIN_SIGNALS = getattr(settings, "CSRF_DEFENSE_MIN_SIGNALS", 1)
 CSRF_DEFENSE_EXCLUDED_API_PREFIXES = getattr(settings, "CSRF_DEFENSE_EXCLUDED_API_PREFIXES", ["/api/"])
+
+# PATRONES EXPANDIDOS PARA ANÁLISIS DE PAYLOAD EN TODOS LOS CAMPOS (SIN DESCUENTO)
+CSRF_PAYLOAD_PATTERNS = [
+    (re.compile(r"<script[^>]*>.*?</script>", re.I | re.S), "Script tag en payload", 0.9),
+    (re.compile(r"javascript\s*:", re.I), "URI javascript: en payload", 0.8),
+    (re.compile(r"http[s]?://[^\s]+", re.I), "URL externa en payload", 0.7),
+    (re.compile(r"eval\s*\(", re.I), "eval() en payload", 1.0),
+    (re.compile(r"document\.cookie", re.I), "Acceso a cookie en payload", 0.9),
+    (re.compile(r"innerHTML\s*=", re.I), "Manipulación DOM innerHTML", 0.8),
+    (re.compile(r"XMLHttpRequest", re.I), "XHR en payload", 0.7),
+    (re.compile(r"fetch\s*\(", re.I), "fetch() en payload", 0.7),
+    (re.compile(r"&#x[0-9a-fA-F]+;", re.I), "Entidades HTML en payload", 0.6),
+    (re.compile(r"%3Cscript", re.I), "Script URL-encoded en payload", 0.8),
+    (re.compile(r"on\w+\s*=", re.I), "Eventos on* en payload", 0.7),
+    (re.compile(r"alert\s*\(", re.I), "alert() en payload (prueba)", 0.5),
+]
 
 def get_client_ip(request):
     x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
@@ -62,15 +85,15 @@ def origin_matches_host(request) -> bool:
     host = host_header.split(":")[0]
     origin = request.META.get("HTTP_ORIGIN", "")
     referer = request.META.get("HTTP_REFERER", "")
-    origin_host = host_from_header(origin)
-    referer_host = host_from_header(referer)
     # Bloquear obvious javascript: referers
     if any(re.search(r"(javascript:|<script|data:text/html)", h or "", re.I) for h in [origin, referer]):
         return False
-    if origin_host and origin_host == host:
-        return True
-    if referer_host and referer_host == host:
-        return True
+    if origin_host := host_from_header(origin):
+        if origin_host == host:
+            return True
+    if referer_host := host_from_header(referer):
+        if referer_host == host:
+            return True
     if not origin and not referer:
         return True
     return False
@@ -118,6 +141,34 @@ def extract_parameters(request) -> List[str]:
         pass
     return params
 
+# FUNCIÓN ROBUSTA: Analizar payload en TODOS los campos (incluyendo sensibles sin descuento)
+def analyze_payload(value: str) -> float:
+    score = 0.0
+    for patt, desc, weight in CSRF_PAYLOAD_PATTERNS:
+        if patt.search(value):
+            score += weight  # Score full, sin descuento
+    return round(score, 3)
+
+# NUEVA FUNCIÓN: Extraer y analizar query string
+def analyze_query_string(request) -> float:
+    qs = request.META.get("QUERY_STRING", "")
+    if qs:
+        return analyze_payload(qs)
+    return 0.0
+
+# NUEVA FUNCIÓN: Analizar headers adicionales
+def analyze_headers(request) -> List[str]:
+    issues = []
+    ua = request.META.get("HTTP_USER_AGENT", "")
+    if re.search(r"(script|<|eval|bot|crawler)", ua, re.I):
+        issues.append("User-Agent sospechoso (posible automatización/bot)")
+    
+    accept_lang = request.META.get("HTTP_ACCEPT_LANGUAGE", "")
+    if not accept_lang or len(accept_lang) < 2:
+        issues.append("Accept-Language ausente o muy corto (posible bot)")
+    
+    return issues
+
 class CSRFDefenseMiddleware(MiddlewareMixin):
     def process_request(self, request):
         # Excluir APIs JSON si se configuró así
@@ -136,7 +187,7 @@ class CSRFDefenseMiddleware(MiddlewareMixin):
             return None
 
         method = (request.method or "").upper()
-        if method not in STATE_CHANGING_METHODS:
+        if method not in STATE_CHANGING_METHODS:  # CORREGIDO: Agregado "in"
             return None
 
         descripcion: List[str] = []
@@ -174,33 +225,73 @@ class CSRFDefenseMiddleware(MiddlewareMixin):
             if origin and host_from_header(origin) != (request.META.get("HTTP_HOST") or "").split(":")[0]:
                 descripcion.append("JSON POST desde origen externo (posible CSRF)")
 
+        # 7) Análisis ROBUSTO de payload en TODOS los campos (sin descuento)
+        payload_score = 0.0
+        payload_summary: List[Dict[str, Any]] = []
+        try:
+            # Analizar POST
+            if hasattr(request, "POST"):
+                for key, value in request.POST.items():
+                    if isinstance(value, str):
+                        score = analyze_payload(value)
+                        payload_score += score
+                        if score > 0:
+                            payload_summary.append({"field": key, "snippet": value[:300], "score": score})
+            # Analizar JSON
+            if "application/json" in content_type:
+                data = json.loads(request.body.decode("utf-8") or "{}")
+                for key, value in data.items():
+                    if isinstance(value, str):
+                        score = analyze_payload(value)
+                        payload_score += score
+                        if score > 0:
+                            payload_summary.append({"field": key, "snippet": value[:300], "score": score})
+        except Exception as e:
+            logger.debug(f"Error analizando payload: {e}")
+
+        if payload_score > 0:
+            descripcion.append(f"Payload sospechoso detectado (score total: {payload_score})")
+
+        # 8) Análisis de query string
+        qs_score = analyze_query_string(request)
+        if qs_score > 0:
+            descripcion.append(f"Query string sospechosa (score: {qs_score})")
+            payload_score += qs_score
+
+        # 9) Análisis de headers adicionales
+        header_issues = analyze_headers(request)
+        descripcion.extend(header_issues)
+
         # Señales >= umbral => marcar
-        if descripcion and len(descripcion) >= CSRF_DEFENSE_MIN_SIGNALS:
+        total_signals = len(descripcion)
+        if descripcion and total_signals >= CSRF_DEFENSE_MIN_SIGNALS:
             w_csrf = getattr(settings, "CSRF_DEFENSE_WEIGHT", 0.2)
-            s_csrf = w_csrf * len(descripcion)
+            s_csrf = w_csrf * total_signals + payload_score  # Score full sin descuento
             request.csrf_attack_info = {
                 "ip": client_ip,
                 "tipos": ["CSRF"],
                 "descripcion": descripcion,
-                "payload": payload,
+                "payload": json.dumps(payload_summary, ensure_ascii=False)[:1000],
                 "score": s_csrf,
             }
             logger.warning(
-                "CSRF detectado desde IP %s: %s ; path=%s ; Content-Type=%s ; score=%.2f",
+                "CSRF detectado desde IP %s: %s ; path=%s ; Content-Type=%s ; score=%.2f (Ultra-Robust: nada ignorado)",
                 client_ip, descripcion, request.path, content_type, s_csrf
             )
         else:
             if descripcion:
-                logger.debug(f"[CSRFDefense] low-signals ({len(descripcion)}) not marking: {descripcion}")
+                logger.debug(f"[CSRFDefense] low-signals ({total_signals}) not marking: {descripcion}")
 
         return None
 
 """
-CSRF Defense Middleware - Reforzado
-===================================
+CSRF Defense Middleware - Ultra-Robusto (Nada Ignorado)
+=======================================================
 - Detecta múltiples categorías de CSRF: clásico, login, logout, password change, file/action, JSON API.
-- Escanea payloads POST, GET y JSON.
+- Escanea payloads POST, GET, JSON, query string y headers, incluyendo TODOS los campos (sensibles y no) con score full (sin descuento).
 - Detecta parámetros sensibles enviados en GET o JSON desde origen externo.
+- Análisis adicional de User-Agent, Accept-Language, y payloads con patrones expandidos.
 - Scoring configurable y logging detallado.
 - Fácil integración con auditoría XSS/SQLi.
+- Máxima robustez: no ignora nada para detección óptima.
 """

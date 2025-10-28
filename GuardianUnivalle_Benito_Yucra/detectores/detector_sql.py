@@ -8,7 +8,7 @@ from django.utils.deprecation import MiddlewareMixin
 from django.conf import settings
 import urllib.parse
 import html
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any
 
 # ----------------------------
 # Configuración del logger
@@ -108,9 +108,23 @@ SQL_PATTERNS: List[Tuple[re.Pattern, str, float]] = [
     # ------------------ Catch‑all aggressive patterns (usar con cuidado) ------------------
     (re.compile(r"(['\"]).*?;\s*(drop|truncate|delete|update|insert)\b", re.I | re.S), "Cadena con terminador y DDL/DML (potencial ataque)", 0.9),
     (re.compile(r"\b(or)\b\s+1\s*=\s*1\b", re.I), "OR 1=1 tautology", 0.85),
+
+    # ---------- NUEVOS PATRONES PARA ROBUSTEZ ----------
+    (re.compile(r"\b(select\s+.*\s+from\s+.*\s+where\s+.*\s+in\s*\()", re.I | re.S), "Subquery anidada (IN subquery)", 0.75),
+    (re.compile(r"\bcase\s+when\s+.*\s+then\s+.*\s+else\b", re.I), "CASE WHEN (blind boolean)", 0.78),
+    (re.compile(r"/\*\!.+\*\//", re.I), "Comentarios condicionales MySQL (/*!...*/)", 0.7),
+    (re.compile(r"\bif\s*\(\s*.*\s*,\s*.*\s*,\s*.*\s*\)", re.I), "IF() MySQL (conditional)", 0.72),
+    (re.compile(r"\bgroup_concat\s*\(", re.I), "GROUP_CONCAT() (exfiltración en error)", 0.8),
 ]
 
-IGNORED_FIELDS = ["password", "csrfmiddlewaretoken", "token", "auth"]
+# Campos sensibles: ANALIZAMOS COMPLETAMENTE SIN DESCUENTO PARA ROBUSTEZ MÁXIMA
+SENSITIVE_FIELDS = ["password", "csrfmiddlewaretoken", "token", "auth", "email", "username"]
+
+DEFAULT_THRESHOLDS = {
+    "HIGH": 1.8,
+    "MEDIUM": 1.0,
+    "LOW": 0.5,
+}
 
 # ----------------------------
 # Obtener IP real del cliente
@@ -124,26 +138,34 @@ def get_client_ip(request):
     return request.META.get("REMOTE_ADDR", "")
 
 # ----------------------------
-# Extraer payload de la solicitud
+# Extraer payload de la solicitud - MEJORADO PARA ANÁLISIS POR CAMPO
 # ----------------------------
-def extract_payload(request):
-    parts = []
+def extract_payload_as_map(request) -> Dict[str, Any]:
     try:
-        if "application/json" in request.META.get("CONTENT_TYPE", ""):
-            data = json.loads(request.body.decode("utf-8") or "{}")
-            parts.append(json.dumps(data))
+        ct = request.META.get("CONTENT_TYPE", "")
+        if "application/json" in ct:
+            raw = request.body.decode("utf-8") or "{}"
+            try:
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    return data
+                else:
+                    return {"raw": raw}
+            except Exception:
+                return {"raw": raw}
         else:
-            body = request.body.decode("utf-8", errors="ignore")
-            if body:
-                parts.append(body)
+            try:
+                post = request.POST.dict()
+                if post:
+                    return post
+            except Exception:
+                pass
+            raw = request.body.decode("utf-8", errors="ignore")
+            if raw:
+                return {"raw": raw}
     except Exception:
         pass
-
-    qs = request.META.get("QUERY_STRING", "")
-    if qs:
-        parts.append(qs)
-
-    return " ".join(parts)
+    return {}
 
 # ----------------------------
 # Normalización / preprocesamiento
@@ -159,13 +181,12 @@ def normalize_input(s: str) -> str:
         s_dec = html.unescape(s_dec)
     except Exception:
         pass
-    # Reemplazo seguro de secuencias \xNN
     s_dec = re.sub(r"\\x([0-9a-fA-F]{2})", r"\\x\g<1>", s_dec)
     s_dec = re.sub(r"\s+", " ", s_dec)
     return s_dec.strip()
 
 # ----------------------------
-# Detector SQLi
+# Detector SQLi - ROBUSTO SIN DESCUENTO
 # ----------------------------
 def detect_sql_injection(text: str) -> Dict:
     norm = normalize_input(text or "")
@@ -174,7 +195,7 @@ def detect_sql_injection(text: str) -> Dict:
     descriptions = []
     for pattern, desc, weight in SQL_PATTERNS:
         if pattern.search(norm):
-            score += weight
+            score += weight  # Score full, sin descuento
             matches.append((desc, pattern.pattern, weight))
             descriptions.append(desc)
 
@@ -185,14 +206,8 @@ def detect_sql_injection(text: str) -> Dict:
         "sample": norm[:1200],
     }
 
-DEFAULT_THRESHOLDS = {
-    "HIGH": 1.8,
-    "MEDIUM": 1.0,
-    "LOW": 0.5,
-}
-
 # ----------------------------
-# Middleware SQLi
+# Middleware SQLi - ULTRA-ROBUSTO
 # ----------------------------
 class SQLIDefenseMiddleware(MiddlewareMixin):
     def process_request(self, request):
@@ -202,33 +217,65 @@ class SQLIDefenseMiddleware(MiddlewareMixin):
 
         if client_ip in trusted_ips:
             return None
-
         referer = request.META.get("HTTP_REFERER", "")
         host = request.get_host()
         if any(url in referer for url in trusted_urls) or any(url in host for url in trusted_urls):
             return None
+        # Extraer datos como mapa para análisis por campo
+        data = extract_payload_as_map(request)
+        qs = request.META.get("QUERY_STRING", "")
+        if qs:
+            data["_query_string"] = qs
+        if not data:
+            return None
+        total_score = 0.0
+        all_descriptions = []
+        all_matches = []
+        payload_summary = []
+        # Analizar campo por campo - AHORA SIN DESCUENTO PARA ROBUSTEZ
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(value, (dict, list)):
+                    try:
+                        vtext = json.dumps(value, ensure_ascii=False)
+                    except Exception:
+                        vtext = str(value)
+                else:
+                    vtext = str(value or "")
 
-        payload = extract_payload(request)
-        result = detect_sql_injection(payload)
-        score = result["score"]
-        descripciones = result["descriptions"]
+                result = detect_sql_injection(vtext)
+                total_score += result["score"]
+                all_descriptions.extend(result["descriptions"])
+                all_matches.extend(result["matches"])
 
-        if score == 0:
+                if result["score"] > 0:
+                    is_sensitive = isinstance(key, str) and key.lower() in SENSITIVE_FIELDS
+                    payload_summary.append({"field": key, "snippet": vtext[:300], "sensitive": is_sensitive})
+        else:
+            raw = str(data)
+            result = detect_sql_injection(raw)
+            total_score += result["score"]
+            all_descriptions.extend(result["descriptions"])
+            all_matches.extend(result["matches"])
+            if result["score"] > 0:
+                payload_summary.append({"field": "raw", "snippet": raw[:500], "sensitive": False})
+
+        if total_score == 0:
             return None
 
         # Registrar ataque
         logger.warning(
             f"[SQLiDetect] IP={client_ip} Host={host} Referer={referer} "
-            f"Score={score:.2f} Desc={descripciones} Payload={payload[:500]}"
+            f"Score={total_score:.2f} Desc={all_descriptions} Payload={json.dumps(payload_summary, ensure_ascii=False)[:500]}"
         )
 
         # Guardar info en request
         request.sql_attack_info = {
             "ip": client_ip,
             "tipos": ["SQLi"],
-            "descripcion": descripciones,
-            "payload": payload[:1000],
-            "score": round(score, 2),
+            "descripcion": all_descriptions,
+            "payload": json.dumps(payload_summary, ensure_ascii=False)[:1000],
+            "score": round(total_score, 2),
             "url": request.build_absolute_uri(),
         }
 

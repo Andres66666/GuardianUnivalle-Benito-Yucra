@@ -29,11 +29,10 @@ except Exception:
     _BLEACH_AVAILABLE = False
 
 # -------------------------------------------------
-# Patrones XSS con peso (descripcion, peso)
+# Patrones XSS con peso (descripcion, peso) - EXPANDIDOS PARA ROBUSTEZ
 # - pesos mayores = más severo (por ejemplo <script> o javascript:)
-# - esto permite un scoring acumulativo y menos falsos positivos
+# - Agregados patrones para DOM-based, polyglots y evasiones avanzadas
 # -------------------------------------------------
-
 XSS_PATTERNS: List[Tuple[re.Pattern, str, float]] = [
     # ---------- Máxima severidad / ejecución directa ----------
     (re.compile(r"<\s*script\b", re.I), "Etiqueta <script> (directa)", 0.95),
@@ -94,20 +93,30 @@ XSS_PATTERNS: List[Tuple[re.Pattern, str, float]] = [
     # ---------- Heurísticos de baja severidad (informativo) ----------
     (re.compile(r"<\s*form\b", re.I), "Form (posible vector de ataque relacionado)", 0.25),
     (re.compile(r"(onmouseover|onfocus|onmouseenter|onmouseleave)\b", re.I), "Eventos UI (mouseover/focus)", 0.45),
+
+    # ---------- NUEVOS PATRONES PARA ROBUSTEZ ----------
+    (re.compile(r"\binnerHTML\s*=\s*.*[<>\"']", re.I), "Asignación a innerHTML con tags", 0.85),  # DOM-based
+    (re.compile(r"\bdocument\.getElementById\s*\(\s*.*\)\.innerHTML", re.I), "Manipulación DOM innerHTML", 0.80),
+    (re.compile(r"<script[^>]*src\s*=\s*['\"][^'\"]*['\"][^>]*>", re.I), "Script externo (posible carga remota)", 0.75),
+    (re.compile(r"\bXMLHttpRequest\s*\(\s*\)\.open\s*\(\s*['\"](GET|POST)['\"]", re.I), "XHR manipulado (posible exfiltración)", 0.70),
+    (re.compile(r"<\s*link\b[^>]*\bhref\s*=\s*['\"][^'\"]*javascript\s*:", re.I), "Link con href javascript:", 0.78),
+    (re.compile(r"\bwindow\.open\s*\(\s*['\"]*javascript\s*:", re.I), "window.open con javascript:", 0.82),
 ]
 
 # -------------------------------------------------
-# Campos que NO queremos analizar (contraseñas, tokens, etc.)
+# Campos sensibles: NO LOS IGNORAMOS COMPLETAMENTE, PERO LES DAMOS DESCUENTO EN SCORE
+# Para robustez, los analizamos pero reducimos el peso para evitar falsos positivos.
 # -------------------------------------------------
-IGNORED_FIELDS = getattr(settings, "XSS_DEFENSE_IGNORED_FIELDS", ["password", "csrfmiddlewaretoken", "token", "auth"])
+SENSITIVE_FIELDS = ["password", "csrfmiddlewaretoken", "token", "auth"]
+SENSITIVE_DISCOUNT = 0.5  # Multiplicador para campos sensibles
 
 # Umbral por defecto para considerar "alto riesgo" (Auditoria puede bloquear según su lógica)
 XSS_DEFENSE_THRESHOLD = getattr(settings, "XSS_DEFENSE_THRESHOLD", 0.6)
 
-
 # -------------------------------------------------
 # Util: validación / extracción de IP (robusta)
 # -------------------------------------------------
+
 def _is_valid_ip(ip: str) -> bool:
     """Verifica que la cadena sea una IP válida (v4 o v6)."""
     try:
@@ -116,7 +125,6 @@ def _is_valid_ip(ip: str) -> bool:
         return True
     except Exception:
         return False
-
 
 def get_client_ip(request) -> str:
     """
@@ -142,7 +150,6 @@ def get_client_ip(request) -> str:
     # Fallback
     remote = request.META.get("REMOTE_ADDR")
     return remote or ""
-
 
 # -------------------------------------------------
 # Extraer payload pero evitando cabeceras (para reducir falsos positivos)
@@ -185,15 +192,14 @@ def extract_body_as_map(request) -> Dict[str, Any]:
         pass
     return {}
 
-
 # -------------------------------------------------
 # Analizar un solo valor (string) en busca de XSS usando patrones
 # Devuelve (score, descripciones, matches_patterns)
 # -------------------------------------------------
-def detect_xss_in_value(value: str) -> Tuple[float, List[str], List[str]]:
+def detect_xss_in_value(value: str, is_sensitive: bool = False) -> Tuple[float, List[str], List[str]]:
     """
     Analiza una cadena y devuelve:
-      - score acumulado (sum pesos)
+      - score acumulado (sum pesos, con descuento si es campo sensible)
       - lista de descripciones activadas
       - lista de patrones (regex.pattern) que matchearon
     """
@@ -204,28 +210,26 @@ def detect_xss_in_value(value: str) -> Tuple[float, List[str], List[str]]:
     descripcion = []
     matches = []
 
-    # Si bleach está disponible, podemos "limpiar" y comparar; pero aquí solo detectamos
+    # Si bleach está disponible, sanitizar y comparar para detección adicional
+    if _BLEACH_AVAILABLE:
+        cleaned = bleach.clean(value, strip=True)
+        if cleaned != value:
+            score_total += 0.5  # Penalización por cambios en sanitización
+            descripcion.append("Contenido alterado por sanitización (bleach)")
+
     for patt, msg, weight in XSS_PATTERNS:
         if patt.search(value):
-            score_total += weight
+            adjusted_weight = weight * SENSITIVE_DISCOUNT if is_sensitive else weight
+            score_total += adjusted_weight
             descripcion.append(msg)
             matches.append(patt.pattern)
 
     return round(score_total, 3), descripcion, matches
 
-
 # -------------------------------------------------
-# Middleware principal XSS
+# Middleware principal XSS - MEJORADO PARA ROBUSTEZ
 # -------------------------------------------------
 class XSSDefenseMiddleware(MiddlewareMixin):
-    """
-    Middleware para detección XSS.
-    - Analiza el body (campo por campo) y querystring si aplica.
-    - Ignora campos sensibles (password, token).
-    - No incluye User-Agent/Referer en el texto analizado (evita falsos positivos).
-    - Añade request.xss_attack_info con: ip, tipos, descripcion, payload, score, url.
-    """
-
     def process_request(self, request):
         # 1) IP y exclusiones
         client_ip = get_client_ip(request)
@@ -251,15 +255,12 @@ class XSSDefenseMiddleware(MiddlewareMixin):
         total_score = 0.0
         all_descriptions: List[str] = []
         all_matches: List[str] = []
-        # payload_for_storage: guardamos un resumen/truncado para auditoría
         payload_summary = []
 
-        # 3) Analizar campo por campo (si es dict) o el raw
+        # 3) Analizar campo por campo (si es dict) o el raw - AHORA ANALIZA TODO, CON DESCUENTO PARA SENSIBLES
         if isinstance(data, dict):
             for key, value in data.items():
-                # evitar analizar campos sensibles
-                if isinstance(key, str) and key.lower() in [f.lower() for f in IGNORED_FIELDS]:
-                    continue
+                is_sensitive = isinstance(key, str) and key.lower() in SENSITIVE_FIELDS
 
                 # convertir a string si es otro tipo (list, int...)
                 if isinstance(value, (dict, list)):
@@ -270,20 +271,13 @@ class XSSDefenseMiddleware(MiddlewareMixin):
                 else:
                     vtext = str(value or "")
 
-                # salto rápido: si el valor parece ser un email o password muy corto y sin signos,
-                # las probabilidades de XSS son muy bajas; continúa (reduce falsos positivos).
-                if key.lower() in ("email", "username") and len(vtext) < 256:
-                    # aún así pasar por patrones (no lo ignoramos completamente), pero podemos bajar sensibilidad
-                    pass
-
-                s, descs, matches = detect_xss_in_value(vtext)
+                s, descs, matches = detect_xss_in_value(vtext, is_sensitive)
                 total_score += s
                 all_descriptions.extend(descs)
                 all_matches.extend(matches)
 
                 if s > 0:
-                    # almacenar fragmento del campo para auditoría (truncado)
-                    payload_summary.append({ "field": key, "snippet": vtext[:300] })
+                    payload_summary.append({"field": key, "snippet": vtext[:300], "sensitive": is_sensitive})
 
         else:
             # si no es dict, analizar el raw como texto
@@ -293,7 +287,7 @@ class XSSDefenseMiddleware(MiddlewareMixin):
             all_descriptions.extend(descs)
             all_matches.extend(matches)
             if s > 0:
-                payload_summary.append({"field":"raw","snippet": raw[:500]})
+                payload_summary.append({"field": "raw", "snippet": raw[:500], "sensitive": False})
 
         # 4) si no detectó nada, continuar
         if total_score == 0:
@@ -305,7 +299,7 @@ class XSSDefenseMiddleware(MiddlewareMixin):
         payload_for_request = json.dumps(payload_summary, ensure_ascii=False)[:2000]
 
         logger.warning(
-            "XSS detectado desde IP %s URL=%s Score=%.3f Desc=%s",
+            "XSS detectado desde IP %s URL=%s Score=%.3f Desc=%s (Robust: incluye sensibles con descuento)",
             client_ip,
             url,
             score_rounded,
@@ -320,8 +314,7 @@ class XSSDefenseMiddleware(MiddlewareMixin):
             "payload": payload_for_request,
             "score": score_rounded,
             "url": url,
-        }
-
+        }    
         # 7) NO bloquear aquí — lo hace AuditoriaMiddleware según su política
         return None
 

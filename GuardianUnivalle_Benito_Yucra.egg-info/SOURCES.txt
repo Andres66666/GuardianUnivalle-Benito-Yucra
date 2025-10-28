@@ -15,7 +15,6 @@ GuardianUnivalle_Benito_Yucra/criptografia/intercambio_claves.py
 GuardianUnivalle_Benito_Yucra/criptografia/kdf.py
 GuardianUnivalle_Benito_Yucra/detectores/detector_csrf.py
 GuardianUnivalle_Benito_Yucra/detectores/detector_dos.py
-GuardianUnivalle_Benito_Yucra/detectores/detector_keylogger.py
 GuardianUnivalle_Benito_Yucra/detectores/detector_sql.py
 GuardianUnivalle_Benito_Yucra/detectores/detector_xss.py
 GuardianUnivalle_Benito_Yucra/middleware_web/middleware_web.py
