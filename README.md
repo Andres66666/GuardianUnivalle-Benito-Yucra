@@ -108,11 +108,13 @@ pip install guardian-univalle
 En tu archivo settings.py de Django, añadir los middlewares:
 ```python
 MIDDLEWARE = [
-"guardian_univalle.detectores.csrf_defense.CSRFDefenseMiddleware",
-"guardian_univalle.detectores.xss_defense.XSSDefenseMiddleware",
-"guardian_univalle.detectores.sql_defense.SQLIDefenseMiddleware",
-"guardian_univalle.detectores.dos_defense.DOSDefenseMiddleware",
-"guardian_univalle.detectores.scraping_defense.ScrapingDefenseMiddleware", # opcional
+    # Middlewares personalizados  
+    "GuardianUnivalle_Benito_Yucra.detectores.detector_dos.DOSDefenseMiddleware", 
+    "GuardianUnivalle_Benito_Yucra.detectores.detector_sql.SQLIDefenseMiddleware",
+    "GuardianUnivalle_Benito_Yucra.detectores.detector_xss.XSSDefenseMiddleware",
+    "GuardianUnivalle_Benito_Yucra.detectores.detector_csrf.CSRFDefenseMiddleware",
+    "users.middleware.AuditoriaMiddleware",
+    'users.auditoria_servidor.AuditoriaServidorMiddleware',
 ]
 ```
 (Opcional) Configurar umbrales en settings.py:
@@ -150,6 +152,7 @@ Escalamiento de score basado en señales múltiples.
 Su diseño es didáctico y extensible, ideal tanto para proyectos reales como para enseñanza de ciberseguridad aplicada.
 
 🧱 Estructura del paquete
+```python
 guardian_univalle/
 │
 ├── detectores/
@@ -163,7 +166,7 @@ guardian_univalle/
 │ └── auditoria_middleware.py
 │
 └── **init**.py
-
+```
 🧾 Licencia
 
 Este proyecto se distribuye bajo la licencia MIT, permitiendo libre uso y modificación con atribución.
