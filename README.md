@@ -2,7 +2,7 @@
 <p align="center">
   <img src="https://upload.wikimedia.org/wikipedia/commons/f/fb/Univalle_bol_cbb_logo.png" width="180"/>
 </p>
-# 🛡️ Guardian Univalle – Benito & Junkrat
+#### Guardian Univalle – Benito & Junkrat
 
 **Framework de detección y defensa de amenazas web para Django y Flask**
 
