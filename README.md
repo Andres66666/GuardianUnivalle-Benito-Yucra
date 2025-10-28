@@ -1,6 +1,6 @@
 <!-- Información de la librería -->
 <p align="center">
-  <img src="[https://github.com/tu_usuario/tu_repositorio/blob/main/logo.png" alt="Guardian Univalle Logo](https://pypi-camo.freetls.fastly.net/0108a265015821d2e007269a5f18be7e5c6e26db/68747470733a2f2f7365637572652e67726176617461722e636f6d2f6176617461722f63613336663664376433623862353736663730653632323339643136383938313f73697a653d323235)" width="180"/>
+  <img src="https://upload.wikimedia.org/wikipedia/commons/f/fb/Univalle_bol_cbb_logo.png" width="180"/>
 </p>
 # 🛡️ Guardian Univalle – Benito & Junkrat
 
