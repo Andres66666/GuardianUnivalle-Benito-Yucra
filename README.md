@@ -124,32 +124,94 @@ MIDDLEWARE = [
 ```
 
 ```bash
+ALLOWED_HOSTS = [
+    "192.168.0.3",
+    "127.0.0.1",
+    "localhost",
+]
+
+```
+### Parámetros de defensa avanzada
+
+```bash
+# --- DoS Defense ---
+DOS_LIMITE_PETICIONES = 120 
+DOS_VENTANA_SEGUNDOS = 60
+DOS_PESO = 0.6
+DOS_LIMITE_ENDPOINTS = 80 
+DOS_TIEMPO_BLOQUEO = 300 
+DOS_TRUSTED_IPS = ["127.0.0.1", "192.168.0.3"]
+
+# Score total de bloqueo
+DOS_PESO_BLACKLIST = 0.3
+DOS_PESO_HEURISTICA = 0.1
+DOS_UMBRAL_BLOQUEO = 0.8
+
+# Configuración general
+DOS_DEFENSE_MAX_REQUESTS = 100
+DOS_DEFENSE_BLOCK_TIME = 300
+DOS_DEFENSE_TRUSTED_IPS = ["127.0.0.1", "192.168.0.3"]
+
 ```
 
 ```bash
-```
+# --- SQL Injection Defense ---
+SQLI_DEFENSE_TRUSTED_IPS = ["127.0.0.1", "192.168.0.3"]
 
+# --- XSS Defense ---
+XSS_DEFENSE_TRUSTED_IPS = ["127.0.0.1", "192.168.0.3"]
+XSS_DEFENSE_SANITIZE_INPUT = False
+XSS_DEFENSE_BLOCK = True
+XSS_DEFENSE_EXCLUDED_PATHS = ["/health", "/internal"]
+
+# --- CSRF Defense ---
+CSRF_DEFENSE_TRUSTED_IPS = ["127.0.0.1", "192.168.0.3"]
+CSRF_DEFENSE_BLOCK = True
+CSRF_DEFENSE_LOG = True
+
+```
+### Auditoría y correlación de eventos
 ```bash
-```
+request.xss_attack_info = {
+    "ip": "192.168.1.10",
+    "tipos": ["XSS"],
+    "descripcion": ["Etiqueta <script> detectada"],
+    "payload": {"field": "comentario", "snippet": "<script>alert(1)</script>"},
+    "score": 0.92,
+    "url": "/comentarios/enviar/",
+}
 
+```
+### Filosofía del proyecto
+Guardian Univalle – Benito & Junkrat busca proporcionar una capa de defensa proactiva para entornos Django universitarios y empresariales, combinando:
+
+#Detección heurística.
+
+#Análisis semántico de cabeceras y payloads.
+
+#Escalamiento de score basado en señales múltiples.
+
+Su diseño es didáctico y extensible, ideal tanto para proyectos reales como para enseñanza de ciberseguridad aplicada.
+---
+### Estructura del paquete
 ```bash
-```
+guardian_univalle/
+│
+├── detectores/
+│   ├── csrf_defense.py
+│   ├── xss_defense.py
+│   ├── sql_defense.py
+│   ├── dos_defense.py
+│   ├── scraping_defense.py
+│
+├── auditoria/
+│   └── auditoria_middleware.py
+│
+└── __init__.py
 
-```bash
 ```
-
-```bash
-```
-
-```bash
-```
-
-```bash
-```
-
-```bash
-```
-
-```bash
-```
-
+### Licencia 
+Este proyecto se distribuye bajo la licencia MIT, permitiendo libre uso y modificación con atribución.
+📘 Universidad Privada del Valle – Sede La Paz
+👨‍💻 Desarrollado por: Benito Yucra & Junkrat
+📅 Año: 2025
