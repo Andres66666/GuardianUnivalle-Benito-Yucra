@@ -22,7 +22,7 @@ Cada middleware:
 
 ---
 
-## 🧩 Módulos de defensa incluidos
+##  Módulos de defensa incluidos
 
 ### 1. CSRFDefenseMiddleware
 **Defensa contra Cross-Site Request Forgery (CSRF)**
