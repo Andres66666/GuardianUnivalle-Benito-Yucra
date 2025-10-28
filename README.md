@@ -117,16 +117,66 @@ MIDDLEWARE = [
     'users.auditoria_servidor.AuditoriaServidorMiddleware',
 ]
 ```
-(Opcional) Configurar umbrales en settings.py:
+```python
+ALLOWED_HOSTS = [
+    "192.168.0.3",
+    "127.0.0.1",
+    "localhost",
+]
+```
+```python
+# --- DoS Defense (Avanzado con Score) ---
+DOS_LIMITE_PETICIONES = 120 
+DOS_VENTANA_SEGUNDOS = 60
+DOS_PESO = 0.6  # Peso para S_dos (Tasa de peticiones)
+DOS_LIMITE_ENDPOINTS = 80 
+DOS_TIEMPO_BLOQUEO = 300 
+DOS_TRUSTED_IPS = ["127.0.0.1","192.168.0.3", ] 
 
-XSS_DEFENSE_THRESHOLD = 0.6
-CSRF_DEFENSE_MIN_SIGNALS = 1
-DOS_DEFENSE_MAX_REQUESTS = 100
-SQLI_DEFENSE_THRESHOLD = 0.5
+# 🆕 NUEVOS PARÁMETROS DEL SCORE TOTAL:
+DOS_PESO_BLACKLIST = 0.3    # Peso para S_blacklist (IP/CIDR malicioso)
+DOS_PESO_HEURISTICA = 0.1   # Peso para S_heuristica (Headers/Endpoints)
+DOS_UMBRAL_BLOQUEO = 0.8    # Score total (0 a 1.0) para bloquear
+DOS_DEFENSE_MAX_REQUESTS = 100  # máximo requests por minuto
+DOS_DEFENSE_BLOCK_TIME = 300  # segundos para bloquear IP sospechosa
+DOS_DEFENSE_TRUSTED_IPS = [
+    "127.0.0.1",
+    "192.168.0.3",
+]
 
+```
+```python
+# --- SQL Injection Defense ---
+SQLI_DEFENSE_TRUSTED_IPS = [
+    "127.0.0.1",
+    "192.168.0.3",
+]
+# --- XSS Defense ---
+XSS_DEFENSE_TRUSTED_IPS = [
+    "127.0.0.1",
+    "192.168.0.3",
+]
+XSS_DEFENSE_SANITIZE_INPUT = False
+XSS_DEFENSE_BLOCK = True
+XSS_DEFENSE_EXCLUDED_PATHS = ["/health", "/internal"]
+
+# --- CSRF Defense ---
+CSRF_DEFENSE_TRUSTED_IPS = [
+    "127.0.0.1",
+    "192.168.0.3",
+]
+CSRF_DEFENSE_BLOCK = True
+CSRF_DEFENSE_LOG = True
+```
+```python
+
+```
+```python
+```
 🧾 Auditoría y correlación de eventos
 
 Cada middleware genera un diccionario con detalles de detección:
+```python
 
 request.xss_attack_info = {
 "ip": "192.168.1.10",
@@ -137,6 +187,7 @@ request.xss_attack_info = {
 "url": "/comentarios/enviar/",
 }
 
+```
 Estos datos pueden ser almacenados por un AuditoriaMiddleware o enviados a un sistema SIEM para correlación y respuesta automatizada.
 
 🧩 Filosofía del proyecto
