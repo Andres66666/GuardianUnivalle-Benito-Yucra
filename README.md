@@ -1,13 +1,24 @@
 <!-- Información de la librería -->
-<div align="center" style="display: flex; align-items: center; justify-content: space-between;">
-  <h1 style="flex: 1; text-align: left; margin: 0;">
-     Guardian Univalle – Benito
-  </h1>
-  <img src="https://upload.wikimedia.org/wikipedia/commons/f/fb/Univalle_bol_cbb_logo.png" alt="Univalle Logo" width="120" style="margin-left: 20px;"/>
-</div>
+<table align="center" style="width: 100%; text-align: center; border-collapse: collapse; background-color: #f4f4f9; border-radius: 15px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); padding: 20px;">
+  <tr>
+    <td style="border: none; padding: 10px 20px; text-align: left;">
+      <h1 style="font-size: 60px; margin: 0; color: #c62828; font-family: 'Arial', sans-serif; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">
+        🛡️ Guardian Univalle – Benito
+      </h1>
+      <p style="margin: 5px 0 0 0; font-size: 18px; color: #444; font-family: 'Segoe UI', sans-serif;">
+        Framework de detección y defensa de amenazas web para Django y Flask.
+      </p>
+    </td>
+    <td style="border: none; padding: 10px 20px;">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/f/fb/Univalle_bol_cbb_logo.png" 
+           alt="Univalle Logo" width="120" 
+           style="transition: transform 0.3s ease-in-out;" 
+           onmouseover="this.style.transform='scale(1.1)'" 
+           onmouseout="this.style.transform='scale(1)'">
+    </td>
+  </tr>
+</table>
 
-
-**Framework de detección y defensa de amenazas web para Django
 
 `Guardian Univalle` es un sistema de seguridad modular desarrollado para fortalecer aplicaciones Django frente a ataques web comunes como **XSS**, **CSRF**, **inyección SQL**, **ataques DoS** y **scraping automatizado**.  
 Cada módulo opera mediante **middlewares independientes** que analizan el tráfico HTTP en tiempo real, aplican heurísticas inteligentes y registran eventos sospechosos para auditoría y bloqueo adaptativo.
