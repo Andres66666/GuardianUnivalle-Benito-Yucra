@@ -106,7 +106,7 @@ Instalar la librería:
 pip install guardian-univalle
 
 En tu archivo settings.py de Django, añadir los middlewares:
-
+```python
 MIDDLEWARE = [
 "guardian_univalle.detectores.csrf_defense.CSRFDefenseMiddleware",
 "guardian_univalle.detectores.xss_defense.XSSDefenseMiddleware",
@@ -114,7 +114,7 @@ MIDDLEWARE = [
 "guardian_univalle.detectores.dos_defense.DOSDefenseMiddleware",
 "guardian_univalle.detectores.scraping_defense.ScrapingDefenseMiddleware", # opcional
 ]
-
+```
 (Opcional) Configurar umbrales en settings.py:
 
 XSS_DEFENSE_THRESHOLD = 0.6
