@@ -7,13 +7,12 @@
 </div>
 
 
-**Framework de detección y defensa de amenazas web para Django y Flask**
+**Framework de detección y defensa de amenazas web para Django
 
 `Guardian Univalle` es un sistema de seguridad modular desarrollado para fortalecer aplicaciones Django frente a ataques web comunes como **XSS**, **CSRF**, **inyección SQL**, **ataques DoS** y **scraping automatizado**.  
 Cada módulo opera mediante **middlewares independientes** que analizan el tráfico HTTP en tiempo real, aplican heurísticas inteligentes y registran eventos sospechosos para auditoría y bloqueo adaptativo.
 
 ---
-
 ## Arquitectura general
 
 Guardian Univalle está diseñado bajo una **arquitectura modular y extensible**, donde cada tipo de amenaza se gestiona mediante un middleware especializado.  
