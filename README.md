@@ -1,8 +1,11 @@
 <!-- Información de la librería -->
-<p align="center">
-  <img src="https://upload.wikimedia.org/wikipedia/commons/f/fb/Univalle_bol_cbb_logo.png" width="180"/>
-</p>
-#### Guardian Univalle – Benito & Junkrat
+<div align="center" style="display: flex; align-items: center; justify-content: space-between;">
+  <h1 style="flex: 1; text-align: left; margin: 0;">
+     Guardian Univalle – Benito
+  </h1>
+  <img src="https://upload.wikimedia.org/wikipedia/commons/f/fb/Univalle_bol_cbb_logo.png" alt="Univalle Logo" width="120" style="margin-left: 20px;"/>
+</div>
+
 
 **Framework de detección y defensa de amenazas web para Django y Flask**
 
@@ -214,6 +217,9 @@ guardian_univalle/
 ```
 ### Licencia 
 Este proyecto se distribuye bajo la licencia MIT, permitiendo libre uso y modificación con atribución.
+
 📘 Universidad Privada del Valle – Sede La Paz
-👨‍💻 Desarrollado por: Benito Yucra & Junkrat
+
+👨‍💻 Desarrollado por: Benito Yucra
+
 📅 Año: 2025
