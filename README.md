@@ -10,7 +10,7 @@
       </p>
     </td>
     <td style="border: none; padding: 10px 20px;">
-      <img src="https://res.cloudinary.com/dsbgmboh1/image/upload/v1761864702/vymsc20p9oszcxamidea_ij238h.png" 
+      <img src="https://res.cloudinary.com/dsbgmboh1/image/upload/v1761864884/GuardianUnivalle_imeegq.png" 
            alt="Univalle Logo" width="120" 
            style="transition: transform 0.3s ease-in-out;" 
            onmouseover="this.style.transform='scale(1.1)'" 
