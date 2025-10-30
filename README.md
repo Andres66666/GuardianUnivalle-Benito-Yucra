@@ -12,6 +12,11 @@
     <td style="border: none; padding: 10px 20px;">
       <img src="https://res.cloudinary.com/dsbgmboh1/image/upload/v1761864884/GuardianUnivalle_imeegq.png" 
            alt="Univalle Logo" width="120" 
+           style="transition: transform 0.3s ease-in-out; margin-right: 15px;" 
+           onmouseover="this.style.transform='scale(1.1)'" 
+           onmouseout="this.style.transform='scale(1)'">
+      <img src="https://res.cloudinary.com/dsbgmboh1/image/upload/v1761866594/Andres_Benito_Calle_Yucra_nxyqee.png" 
+           alt="Django Logo" width="120" 
            style="transition: transform 0.3s ease-in-out;" 
            onmouseover="this.style.transform='scale(1.1)'" 
            onmouseout="this.style.transform='scale(1)'">
