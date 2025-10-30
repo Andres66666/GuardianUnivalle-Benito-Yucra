@@ -9,8 +9,8 @@
            onmouseout="this.style.transform='scale(1)'">
     </td>
     <td style="border: none; padding: 10px 20px; text-align: center;">
-      <h1 style="font-size: 60px; margin: 0; color: #c62828; font-family: 'Arial', sans-serif; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">
-        🛡️ Guardian Univalle – Benito
+      <h1 style="font-size: 50px; margin: 0; color: #c62828; font-family: 'Arial', sans-serif; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">
+        Guardian Univalle – Benito
       </h1>
       <p style="margin: 5px 0 0 0; font-size: 18px; color: #444; font-family: 'Segoe UI', sans-serif;">
         Framework de detección y defensa de amenazas web para Django.
