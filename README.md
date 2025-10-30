@@ -3,7 +3,7 @@
   <tr>
     <td style="border: none; padding: 10px 20px;">
       <img src="https://res.cloudinary.com/dsbgmboh1/image/upload/v1761866594/Andres_Benito_Calle_Yucra_nxyqee.png"
-           alt="Univalle Logo" width="180" 
+           alt="Univalle Logo" width="300" 
            style="transition: transform 0.3s ease-in-out;" 
            onmouseover="this.style.transform='scale(1.1)'" 
            onmouseout="this.style.transform='scale(1)'">
@@ -18,7 +18,7 @@
     </td>
     <td style="border: none; padding: 10px 20px;">
       <img src="https://res.cloudinary.com/dsbgmboh1/image/upload/v1761864884/GuardianUnivalle_imeegq.png" 
-           alt="Django Logo" width="180" 
+           alt="Django Logo" width="300" 
            style="transition: transform 0.3s ease-in-out;" 
            onmouseover="this.style.transform='scale(1.1)'" 
            onmouseout="this.style.transform='scale(1)'">
