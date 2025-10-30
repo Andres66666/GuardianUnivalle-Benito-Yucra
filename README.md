@@ -2,7 +2,7 @@
 <table align="center" style="width: 100%; text-align: center; border-collapse: collapse; background-color: #f4f4f9; border-radius: 15px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); padding: 20px;">
   <tr>
     <td style="border: none; padding: 10px 20px;">
-      <img src="https://res.cloudinary.com/dsbgmboh1/image/upload/v1761864884/GuardianUnivalle_imeegq.png" 
+    <img src="https://res.cloudinary.com/dsbgmboh1/image/upload/v1761866594/Andres_Benito_Calle_Yucra_nxyqee.png"
            alt="Univalle Logo" width="120" 
            style="transition: transform 0.3s ease-in-out;" 
            onmouseover="this.style.transform='scale(1.1)'" 
@@ -17,7 +17,7 @@
       </p>
     </td>
     <td style="border: none; padding: 10px 20px;">
-      <img src="https://res.cloudinary.com/dsbgmboh1/image/upload/v1761866594/Andres_Benito_Calle_Yucra_nxyqee.png" 
+        <img src="https://res.cloudinary.com/dsbgmboh1/image/upload/v1761864884/GuardianUnivalle_imeegq.png" 
            alt="Django Logo" width="120" 
            style="transition: transform 0.3s ease-in-out;" 
            onmouseover="this.style.transform='scale(1.1)'" 
