@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: GuardianUnivalle-Benito-Yucra
-Version: 0.1.70
+Version: 0.1.71
 Summary: Middleware y detectores de seguridad (SQLi, XSS, CSRF, DoS) para Django/Flask
 Author-email: Andres Benito Calle Yucra <benitoandrescalle035@gmail.com>
 License: MIT
@@ -22,171 +22,258 @@ Requires-Dist: django>=3.2
 Dynamic: license-file
 
 <!-- Información de la librería -->
+<table align="center" style="width: 100%; text-align: center; border-collapse: collapse; background-color: #f4f4f9; border-radius: 15px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); padding: 20px;">
+  <tr>
+    <td style="border: none; padding: 10px 20px;">
+      <img src="https://res.cloudinary.com/dsbgmboh1/image/upload/v1761866594/Andres_Benito_Calle_Yucra_nxyqee.png"
+           alt="Univalle Logo" width="300" 
+           style="transition: transform 0.3s ease-in-out;" 
+           onmouseover="this.style.transform='scale(1.1)'" 
+           onmouseout="this.style.transform='scale(1)'">
+    </td>
+    <td style="border: none; padding: 10px 20px; text-align: center;">
+      <h1 style="font-size: 50px; margin: 0; color: #c62828; font-family: 'Arial', sans-serif; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">
+        Guardian Univalle Benito Yucra
+      </h1>
+      <p style="margin: 5px 0 0 0; font-size: 18px; color: #444; font-family: 'Segoe UI', sans-serif;">
+        Framework de detección y defensa de amenazas web para Django.
+      </p>
+    </td>
+    <td style="border: none; padding: 10px 20px;">
+      <img src="https://res.cloudinary.com/dsbgmboh1/image/upload/v1761864884/GuardianUnivalle_imeegq.png" 
+           alt="Django Logo" width="300" 
+           style="transition: transform 0.3s ease-in-out;" 
+           onmouseover="this.style.transform='scale(1.1)'" 
+           onmouseout="this.style.transform='scale(1)'">
+    </td>
+  </tr>
+</table>
 
-# 🛡️ Guardian Univalle – Benito & Junkrat
+`Guardian Univalle` es un sistema de seguridad modular desarrollado para fortalecer aplicaciones Django frente a ataques web comunes como **XSS**, **CSRF**, **inyección SQL**, **ataques DoS** y **scraping automatizado**.  
+Cada módulo opera mediante **middlewares independientes** que analizan el tráfico HTTP en tiempo real, aplican heurísticas inteligentes y registran eventos sospechosos para auditoría y bloqueo adaptativo.
 
-Framework de detección y defensa de amenazas web para Django y Flask
+---
 
-Guardian Univalle es un sistema de seguridad modular desarrollado para fortalecer aplicaciones Django frente a ataques web comunes como XSS, CSRF, inyección SQL, ataques DoS y scraping automatizado.
-Cada módulo opera mediante middleware independientes que analizan el tráfico HTTP en tiempo real, aplican heurísticas inteligentes y registran eventos sospechosos para auditoría y bloqueo adaptativo.
+## Arquitectura general
 
-⚙️ Arquitectura general
-
-Guardian Univalle está diseñado bajo una arquitectura modular y extensible, donde cada tipo de amenaza se gestiona mediante un middleware especializado.
+Guardian Univalle está diseñado bajo una **arquitectura modular y extensible**, donde cada tipo de amenaza se gestiona mediante un middleware especializado.  
 Cada middleware:
 
-- Se ejecuta en la fase inicial del request (process_request).
+- Se ejecuta en la fase inicial del request (`process_request`).
 - Analiza cabeceras, cuerpo y metadatos de la petición.
 - Evalúa indicadores de ataque según patrones heurísticos y reglas configurables.
 - Calcula una puntuación de riesgo (score) para cada evento.
-- Anexa la información al objeto request (por ejemplo, request.xss_attack_info) para que otros módulos (como el de auditoría) la procesen.
+- Anexa la información al objeto `request` (por ejemplo, `request.xss_attack_info`) para que otros módulos (como el de auditoría) la procesen.
 
-🧩 Módulos de defensa incluidos
+---
 
-1. 🔐 CSRFDefenseMiddleware
+## Módulos de defensa incluidos
 
-Defensa contra Cross-Site Request Forgery (CSRF).
+### 1. CSRFDefenseMiddleware
+
+**Defensa contra Cross-Site Request Forgery (CSRF)**
 
 Este módulo detecta intentos de falsificación de peticiones mediante:
 
-- Verificación de cabeceras Origin y Referer contra el host real.
-- Validación de tokens CSRF en cookies, cabeceras o formularios.
-- Análisis del tipo de contenido (Content-Type) y parámetros sensibles.
+- Verificación de cabeceras **Origin** y **Referer** contra el host real.
+- Validación de **tokens CSRF** en cookies, cabeceras o formularios.
+- Análisis del **tipo de contenido** (`Content-Type`) y parámetros sensibles.
 - Detección de peticiones JSON o formularios enviados desde dominios externos.
-- Asignación de un score de riesgo proporcional al número y severidad de señales encontradas.
+- Asignación de un **score de riesgo** proporcional al número y severidad de señales encontradas.
 
-Algoritmos utilizados:
-Heurísticas basadas en cabeceras HTTP, validación semántica de origen, y detección de anomalías en métodos POST, PUT, DELETE y PATCH.
+**Algoritmos utilizados:** heurísticas basadas en cabeceras HTTP, validación semántica de origen y detección de anomalías en métodos `POST`, `PUT`, `DELETE` y `PATCH`.
 
-2. 🧬 XSSDefenseMiddleware
+---
 
-Defensa contra Cross-Site Scripting (XSS).
+### 2. XSSDefenseMiddleware
 
-Analiza en profundidad los datos enviados en el cuerpo y querystring, detectando vectores de inyección HTML/JS mediante:
+**Defensa contra Cross-Site Scripting (XSS)**
 
-- Patrones de alto riesgo (<script>, javascript:, onload=, eval()).
-- Ofuscaciones con entidades (&#x3C;, %3Cscript).
-- Detección de atributos de eventos (onmouseover, onfocus, etc.).
-- Análisis de URIs maliciosas (data:text/html, vbscript:).
+Analiza los datos enviados en el cuerpo y querystring, detectando vectores de inyección HTML/JS mediante:
+
+- Patrones de alto riesgo (`<script>`, `javascript:`, `onload=`, `eval()`).
+- Ofuscaciones con entidades (`&#x3C;`, `%3Cscript`).
+- Detección de atributos de eventos (`onmouseover`, `onfocus`, etc.).
+- Análisis de URIs maliciosas (`data:text/html`, `vbscript:`).
 - Scoring ponderado por severidad (de 0.3 a 0.95).
 
-Algoritmos utilizados:
-Detección basada en expresiones regulares avanzadas con pesos heurísticos y uso opcional de la librería Bleach para sanitización comparativa.
+**Algoritmos utilizados:** expresiones regulares avanzadas con pesos heurísticos y uso opcional de la librería **Bleach** para sanitización comparativa.
 
-Salida:
-Agrega request.xss_attack_info con los detalles de detección, la IP de origen, descripción, payload y score total.
+**Salida:** agrega `request.xss_attack_info` con los detalles de detección, IP de origen, descripción, payload y score total.
 
-3. 💾 SQLIDefenseMiddleware
+---
 
-Defensa contra Inyección SQL (SQLi).
+### 3. SQLIDefenseMiddleware
 
-Identifica intentos de inyección SQL en los parámetros enviados a través de:
+**Defensa contra Inyección SQL (SQLi)**
 
-- Palabras clave peligrosas (UNION, SELECT, DROP, INSERT, UPDATE).
-- Uso de comentarios (--, #, /_ ... _/).
+Identifica intentos de inyección SQL en parámetros enviados a través de:
+
+- Palabras clave peligrosas (`UNION`, `SELECT`, `DROP`, `INSERT`, `UPDATE`).
+- Uso de comentarios (`--`, `#`, `/* ... */`).
 - Concatenaciones o subconsultas sospechosas.
 - Comportamientos anómalos en parámetros GET, POST o JSON.
 
-Algoritmos utilizados:
-Heurísticas sintácticas + patrones combinados con contextos.
+**Algoritmos utilizados:** heurísticas sintácticas + patrones combinados con contextos.  
 Evalúa combinaciones de operadores y palabras reservadas para minimizar falsos positivos.
 
-Resultado:
-Registra el intento en request.sql_injection_info con score calculado y parámetros comprometidos.
+**Resultado:** registra el intento en `request.sql_injection_info` con score calculado y parámetros comprometidos.
 
-4. 🌐 DOSDefenseMiddleware
+---
 
-Detección de ataques de Denegación de Servicio (DoS).
+### 4. DOSDefenseMiddleware
 
-Monitorea la frecuencia de peticiones por IP y calcula una métrica adaptativa de comportamiento:
+**Detección de ataques de Denegación de Servicio (DoS)**
+
+Monitorea la frecuencia de peticiones por IP y calcula una métrica adaptativa:
 
 - Detecta exceso de solicitudes en intervalos cortos.
-- Analiza User-Agent, patrones repetitivos y tamaño de payloads.
-- Aplica límites configurables (MAX_REQUESTS_PER_WINDOW).
+- Analiza `User-Agent`, patrones repetitivos y tamaño de payloads.
+- Aplica límites configurables (`MAX_REQUESTS_PER_WINDOW`).
 - Marca IPs sospechosas para registro y bloqueo temporal.
 
-Algoritmos utilizados:
-Sliding Window con conteo adaptativo en memoria, controlado por señales de frecuencia e intensidad.
+**Algoritmos utilizados:** Sliding Window con conteo adaptativo, controlado por señales de frecuencia e intensidad.
 
-5. 🕷️ ScrapingDefenseMiddleware (opcional)
+---
 
-Detección de scraping y bots automatizados.
+### 5. ScrapingDefenseMiddleware (opcional)
+
+**Detección de scraping y bots automatizados**
 
 Evalúa características típicas de scraping:
 
 - User-Agent anómalo o ausente.
 - Patrón de navegación repetitivo o excesivamente rápido.
-- Ausencia de cabeceras humanas (como Accept-Language o Referer).
+- Ausencia de cabeceras humanas como `Accept-Language` o `Referer`.
 - Combinación con heurísticas de DoS para detectar scrapers agresivos.
 
-Algoritmos utilizados:
-Análisis estadístico de cabeceras + patrones de comportamiento a corto plazo.
+**Algoritmos utilizados:** análisis estadístico de cabeceras + patrones de comportamiento a corto plazo.
 
-🧠 Integración y uso
+---
 
-Instalar la librería:
+## Integración y uso
 
+### Instalación
+
+```bash
 pip install guardian-univalle
+```
 
-En tu archivo settings.py de Django, añadir los middlewares:
+### Configuración en settings.py
 
+```bash
 MIDDLEWARE = [
-"guardian_univalle.detectores.csrf_defense.CSRFDefenseMiddleware",
-"guardian_univalle.detectores.xss_defense.XSSDefenseMiddleware",
-"guardian_univalle.detectores.sql_defense.SQLIDefenseMiddleware",
-"guardian_univalle.detectores.dos_defense.DOSDefenseMiddleware",
-"guardian_univalle.detectores.scraping_defense.ScrapingDefenseMiddleware", # opcional
+    # Middlewares personalizados
+    "GuardianUnivalle_Benito_Yucra.detectores.detector_dos.DOSDefenseMiddleware",
+    "GuardianUnivalle_Benito_Yucra.detectores.detector_sql.SQLIDefenseMiddleware",
+    "GuardianUnivalle_Benito_Yucra.detectores.detector_xss.XSSDefenseMiddleware",
+    "GuardianUnivalle_Benito_Yucra.detectores.detector_csrf.CSRFDefenseMiddleware",
+    "users.middleware.AuditoriaMiddleware",
+    "users.auditoria_servidor.AuditoriaServidorMiddleware",
 ]
 
-(Opcional) Configurar umbrales en settings.py:
+```
 
-XSS_DEFENSE_THRESHOLD = 0.6
-CSRF_DEFENSE_MIN_SIGNALS = 1
+```bash
+ALLOWED_HOSTS = [
+    "192.168.0.3",
+    "127.0.0.1",
+    "localhost",
+]
+
+```
+
+### Parámetros de defensa avanzada
+
+```bash
+# --- DoS Defense ---
+DOS_LIMITE_PETICIONES = 120
+DOS_VENTANA_SEGUNDOS = 60
+DOS_PESO = 0.6
+DOS_LIMITE_ENDPOINTS = 80
+DOS_TIEMPO_BLOQUEO = 300
+DOS_TRUSTED_IPS = ["127.0.0.1", "192.168.0.3"]
+
+# Score total de bloqueo
+DOS_PESO_BLACKLIST = 0.3
+DOS_PESO_HEURISTICA = 0.1
+DOS_UMBRAL_BLOQUEO = 0.8
+
+# Configuración general
 DOS_DEFENSE_MAX_REQUESTS = 100
-SQLI_DEFENSE_THRESHOLD = 0.5
+DOS_DEFENSE_BLOCK_TIME = 300
+DOS_DEFENSE_TRUSTED_IPS = ["127.0.0.1", "192.168.0.3"]
 
-🧾 Auditoría y correlación de eventos
+```
 
-Cada middleware genera un diccionario con detalles de detección:
+```bash
+# --- SQL Injection Defense ---
+SQLI_DEFENSE_TRUSTED_IPS = ["127.0.0.1", "192.168.0.3"]
 
+# --- XSS Defense ---
+XSS_DEFENSE_TRUSTED_IPS = ["127.0.0.1", "192.168.0.3"]
+XSS_DEFENSE_SANITIZE_INPUT = False
+XSS_DEFENSE_BLOCK = True
+XSS_DEFENSE_EXCLUDED_PATHS = ["/health", "/internal"]
+
+# --- CSRF Defense ---
+CSRF_DEFENSE_TRUSTED_IPS = ["127.0.0.1", "192.168.0.3"]
+CSRF_DEFENSE_BLOCK = True
+CSRF_DEFENSE_LOG = True
+
+```
+
+### Auditoría y correlación de eventos
+
+```bash
 request.xss_attack_info = {
-"ip": "192.168.1.10",
-"tipos": ["XSS"],
-"descripcion": ["Etiqueta <script> detectada"],
-"payload": "{'field': 'comentario', 'snippet': '<script>alert(1)</script>'}",
-"score": 0.92,
-"url": "/comentarios/enviar/",
+    "ip": "192.168.1.10",
+    "tipos": ["XSS"],
+    "descripcion": ["Etiqueta <script> detectada"],
+    "payload": {"field": "comentario", "snippet": "<script>alert(1)</script>"},
+    "score": 0.92,
+    "url": "/comentarios/enviar/",
 }
 
-Estos datos pueden ser almacenados por un AuditoriaMiddleware o enviados a un sistema SIEM para correlación y respuesta automatizada.
+```
 
-🧩 Filosofía del proyecto
+### Filosofía del proyecto
 
 Guardian Univalle – Benito & Junkrat busca proporcionar una capa de defensa proactiva para entornos Django universitarios y empresariales, combinando:
 
-Detección heurística,
+#Detección heurística.
 
-Análisis semántico de cabeceras y payloads, y
+#Análisis semántico de cabeceras y payloads.
 
-Escalamiento de score basado en señales múltiples.
+#Escalamiento de score basado en señales múltiples.
 
-Su diseño es didáctico y extensible, ideal tanto para proyectos reales como para enseñanza de ciberseguridad aplicada.
+## Su diseño es didáctico y extensible, ideal tanto para proyectos reales como para enseñanza de ciberseguridad aplicada.
 
-🧱 Estructura del paquete
+### Estructura del paquete
+
+```bash
 guardian_univalle/
 │
 ├── detectores/
-│ ├── csrf_defense.py
-│ ├── xss_defense.py
-│ ├── sql_defense.py
-│ ├── dos_defense.py
-│ ├── scraping_defense.py
+│   ├── csrf_defense.py
+│   ├── xss_defense.py
+│   ├── sql_defense.py
+│   ├── dos_defense.py
+│   ├── scraping_defense.py
 │
 ├── auditoria/
-│ └── auditoria_middleware.py
+│   └── auditoria_middleware.py
 │
-└── **init**.py
+└── __init__.py
 
-🧾 Licencia
+```
+
+### Licencia
 
 Este proyecto se distribuye bajo la licencia MIT, permitiendo libre uso y modificación con atribución.
+
+📘 Universidad Privada del Valle – Sede La Paz
+
+👨‍💻 Desarrollado por: Benito Yucra
+
+📅 Año: 2025

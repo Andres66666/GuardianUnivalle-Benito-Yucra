@@ -26,11 +26,11 @@
   </tr>
 </table>
 
-
 `Guardian Univalle` es un sistema de seguridad modular desarrollado para fortalecer aplicaciones Django frente a ataques web comunes como **XSS**, **CSRF**, **inyección SQL**, **ataques DoS** y **scraping automatizado**.  
 Cada módulo opera mediante **middlewares independientes** que analizan el tráfico HTTP en tiempo real, aplican heurísticas inteligentes y registran eventos sospechosos para auditoría y bloqueo adaptativo.
 
 ---
+
 ## Arquitectura general
 
 Guardian Univalle está diseñado bajo una **arquitectura modular y extensible**, donde cada tipo de amenaza se gestiona mediante un middleware especializado.  
@@ -44,24 +44,26 @@ Cada middleware:
 
 ---
 
-##  Módulos de defensa incluidos
+## Módulos de defensa incluidos
 
 ### 1. CSRFDefenseMiddleware
+
 **Defensa contra Cross-Site Request Forgery (CSRF)**
 
 Este módulo detecta intentos de falsificación de peticiones mediante:
 
-- Verificación de cabeceras **Origin** y **Referer** contra el host real.  
-- Validación de **tokens CSRF** en cookies, cabeceras o formularios.  
-- Análisis del **tipo de contenido** (`Content-Type`) y parámetros sensibles.  
-- Detección de peticiones JSON o formularios enviados desde dominios externos.  
-- Asignación de un **score de riesgo** proporcional al número y severidad de señales encontradas.  
+- Verificación de cabeceras **Origin** y **Referer** contra el host real.
+- Validación de **tokens CSRF** en cookies, cabeceras o formularios.
+- Análisis del **tipo de contenido** (`Content-Type`) y parámetros sensibles.
+- Detección de peticiones JSON o formularios enviados desde dominios externos.
+- Asignación de un **score de riesgo** proporcional al número y severidad de señales encontradas.
 
 **Algoritmos utilizados:** heurísticas basadas en cabeceras HTTP, validación semántica de origen y detección de anomalías en métodos `POST`, `PUT`, `DELETE` y `PATCH`.
 
 ---
 
 ### 2. XSSDefenseMiddleware
+
 **Defensa contra Cross-Site Scripting (XSS)**
 
 Analiza los datos enviados en el cuerpo y querystring, detectando vectores de inyección HTML/JS mediante:
@@ -79,6 +81,7 @@ Analiza los datos enviados en el cuerpo y querystring, detectando vectores de in
 ---
 
 ### 3. SQLIDefenseMiddleware
+
 **Defensa contra Inyección SQL (SQLi)**
 
 Identifica intentos de inyección SQL en parámetros enviados a través de:
@@ -96,6 +99,7 @@ Evalúa combinaciones de operadores y palabras reservadas para minimizar falsos 
 ---
 
 ### 4. DOSDefenseMiddleware
+
 **Detección de ataques de Denegación de Servicio (DoS)**
 
 Monitorea la frecuencia de peticiones por IP y calcula una métrica adaptativa:
@@ -110,13 +114,14 @@ Monitorea la frecuencia de peticiones por IP y calcula una métrica adaptativa:
 ---
 
 ### 5. ScrapingDefenseMiddleware (opcional)
+
 **Detección de scraping y bots automatizados**
 
 Evalúa características típicas de scraping:
 
-- User-Agent anómalo o ausente.  
-- Patrón de navegación repetitivo o excesivamente rápido.  
-- Ausencia de cabeceras humanas como `Accept-Language` o `Referer`.  
+- User-Agent anómalo o ausente.
+- Patrón de navegación repetitivo o excesivamente rápido.
+- Ausencia de cabeceras humanas como `Accept-Language` o `Referer`.
 - Combinación con heurísticas de DoS para detectar scrapers agresivos.
 
 **Algoritmos utilizados:** análisis estadístico de cabeceras + patrones de comportamiento a corto plazo.
@@ -130,12 +135,13 @@ Evalúa características típicas de scraping:
 ```bash
 pip install guardian-univalle
 ```
+
 ### Configuración en settings.py
 
 ```bash
 MIDDLEWARE = [
-    # Middlewares personalizados  
-    "GuardianUnivalle_Benito_Yucra.detectores.detector_dos.DOSDefenseMiddleware", 
+    # Middlewares personalizados
+    "GuardianUnivalle_Benito_Yucra.detectores.detector_dos.DOSDefenseMiddleware",
     "GuardianUnivalle_Benito_Yucra.detectores.detector_sql.SQLIDefenseMiddleware",
     "GuardianUnivalle_Benito_Yucra.detectores.detector_xss.XSSDefenseMiddleware",
     "GuardianUnivalle_Benito_Yucra.detectores.detector_csrf.CSRFDefenseMiddleware",
@@ -153,15 +159,16 @@ ALLOWED_HOSTS = [
 ]
 
 ```
+
 ### Parámetros de defensa avanzada
 
 ```bash
 # --- DoS Defense ---
-DOS_LIMITE_PETICIONES = 120 
+DOS_LIMITE_PETICIONES = 120
 DOS_VENTANA_SEGUNDOS = 60
 DOS_PESO = 0.6
-DOS_LIMITE_ENDPOINTS = 80 
-DOS_TIEMPO_BLOQUEO = 300 
+DOS_LIMITE_ENDPOINTS = 80
+DOS_TIEMPO_BLOQUEO = 300
 DOS_TRUSTED_IPS = ["127.0.0.1", "192.168.0.3"]
 
 # Score total de bloqueo
@@ -192,7 +199,9 @@ CSRF_DEFENSE_BLOCK = True
 CSRF_DEFENSE_LOG = True
 
 ```
+
 ### Auditoría y correlación de eventos
+
 ```bash
 request.xss_attack_info = {
     "ip": "192.168.1.10",
@@ -204,7 +213,9 @@ request.xss_attack_info = {
 }
 
 ```
+
 ### Filosofía del proyecto
+
 Guardian Univalle – Benito & Junkrat busca proporcionar una capa de defensa proactiva para entornos Django universitarios y empresariales, combinando:
 
 #Detección heurística.
@@ -213,9 +224,10 @@ Guardian Univalle – Benito & Junkrat busca proporcionar una capa de defensa pr
 
 #Escalamiento de score basado en señales múltiples.
 
-Su diseño es didáctico y extensible, ideal tanto para proyectos reales como para enseñanza de ciberseguridad aplicada.
----
+## Su diseño es didáctico y extensible, ideal tanto para proyectos reales como para enseñanza de ciberseguridad aplicada.
+
 ### Estructura del paquete
+
 ```bash
 guardian_univalle/
 │
@@ -232,7 +244,9 @@ guardian_univalle/
 └── __init__.py
 
 ```
-### Licencia 
+
+### Licencia
+
 Este proyecto se distribuye bajo la licencia MIT, permitiendo libre uso y modificación con atribución.
 
 📘 Universidad Privada del Valle – Sede La Paz
