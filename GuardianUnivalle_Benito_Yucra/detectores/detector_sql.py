@@ -23,6 +23,7 @@ if not logger.handlers:
 # =====================================================
 # ===        PATRONES DE ATAQUE SQL DEFINIDOS       ===
 # =====================================================
+
 SQL_PATTERNS: List[Tuple[re.Pattern, str, float]] = [
     # ------------------ In‑Band / Exfiltration (muy alto) ------------------
     (re.compile(r"\bunion\b\s+(all\s+)?\bselect\b", re.I), "UNION SELECT (exfiltración)", 0.95),
