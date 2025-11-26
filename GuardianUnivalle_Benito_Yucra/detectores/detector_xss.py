@@ -73,7 +73,7 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 # ----------------------------
-# Configuraciones criptográficas (similar a SQLi)
+# Configuraciones criptográficas
 # ----------------------------
 MASTER_KEY_B64 = getattr(settings, "XSS_DEFENSE_MASTER_KEY", None)
 if not MASTER_KEY_B64:
@@ -97,7 +97,7 @@ AEAD_LABEL = b"xssdefense-aead"
 HASH_CHOICE = getattr(settings, "XSS_DEFENSE_HASH", "SHA256").upper()  # SHA256 o SHA3
 
 # ----------------------------
-# Configuraciones de bloqueo y cache (similar a SQLi, pero con prefijo XSS_)
+# Configuraciones de bloqueo y cache
 # ----------------------------
 XSS_BLOCK_TIMEOUT = getattr(settings, "XSS_DEFENSE_BLOCK_SECONDS", 60 * 60)
 XSS_COUNTER_WINDOW = getattr(settings, "XSS_DEFENSE_COUNTER_WINDOW", 60 * 5)
@@ -112,7 +112,7 @@ XSS_NORM_THRESHOLDS = {
 }
 
 # ----------------------------
-# Patrones XSS robustos (igual que antes)
+# Patrones XSS robustos 
 # ----------------------------
 XSS_PATTERNS: List[Tuple[re.Pattern, str, float]] = [
     (re.compile(r"<\s*script\b", re.I), "<script> directo", 0.95),
@@ -422,7 +422,7 @@ class XSSDefenseCryptoMiddleware(MiddlewareMixin):
     def process_request(self, request):
         client_ip = get_client_ip(request)
 
-        # Chequear bloqueo inicial (similar a SQLi)
+        # Chequear bloqueo inicial 
         if is_ip_blocked(client_ip):
             warning_message = (
                 "Acceso denegado. Su dirección IP y actividades han sido registradas y monitoreadas. "
@@ -494,7 +494,7 @@ class XSSDefenseCryptoMiddleware(MiddlewareMixin):
             client_ip, url, total_score, s_norm, p_attack, all_descriptions
         )
 
-        # Registrar el evento de manera cifrada para auditoría (similar a SQLi)
+        # Registrar el evento de manera cifrada para auditoría
         try:
             record_xss_event({
                 "ts": int(time.time()),
@@ -509,7 +509,7 @@ class XSSDefenseCryptoMiddleware(MiddlewareMixin):
         except Exception:
             logger.exception("failed to record XSS event")
 
-        # Asignar información de ataque al request para uso posterior (e.g., en vistas o middleware de respuesta)
+        # Asignar información de ataque al request para uso posterior
         request.xss_attack_info = {
             "ip": client_ip,
             "tipos": ["XSS"],
@@ -556,40 +556,6 @@ class XSSDefenseCryptoMiddleware(MiddlewareMixin):
             return None
         return None
 
-
-# =====================================================
-# ===              INFORMACIÓN EXTRA                ===
-# =====================================================
-"""
-Algoritmos relacionados:
-    - Se recomienda almacenar los payloads XSS cifrados con AES-GCM
-      para confidencialidad e integridad.
-
-Contribución a fórmula de amenaza S:
-    S_xss = w_xss * detecciones_xss
-    Ejemplo: S_xss = 0.3 * 2 = 0.6
-
-Notas sobre implementación de algoritmos de seguridad:
-    - HMAC-SHA256: Usado para firmar tokens/cookies (sign_cookie_value, verify_cookie_signature).
-    - SHA-256/SHA-3: Usado para hashes de contenido (compute_hash).
-    - AES-GCM/ChaCha20-Poly1305: Usado para cifrar cookies sensibles (encrypt_cookie_value, decrypt_cookie_value).
-    - HKDF: Usado para derivar claves seguras (derive_key).
-    - Argon2id: Usado para derivar claves con resistencia a ataques de fuerza bruta (derive_key).
-    - TLS 1.3: Recomendado para configurar en el servidor web (e.g., Nginx/Apache) para proteger datos en tránsito.
-      Ejemplo configuración Nginx:
-      server {
-          listen 443 ssl http2;
-          ssl_protocols TLSv1.3;
-          ssl_ciphers ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305;
-          # ... otras configuraciones SSL
-      }
-      Esto asegura que las comunicaciones sean seguras y eviten que XSS robe datos en tránsito.
-
-Para usar en producción:
-    - Configura XSS_DEFENSE_MASTER_KEY en settings.py como base64 de una clave segura de 32 bytes.
-    - Ajusta umbrales y configuraciones según necesidades.
-    - Integra con CSP (Content Security Policy) en headers de respuesta para mayor protección.
-"""
 
 # =====================================================
 # ===              INFORMACIÓN EXTRA                ===

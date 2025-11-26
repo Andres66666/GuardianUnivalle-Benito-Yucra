@@ -202,8 +202,13 @@ def decrypt_csrf_token(encrypted_token: str, context: bytes = b"") -> str:
 def record_csrf_event(event: dict) -> None:
     try:
         ts = int(time.time())
-        # cifrar payload si existe
-        if "payload" in event and event["payload"]:
+        # Asegurar que URL siempre se registre (fallback si build_absolute_uri falla)
+        if "url" not in event or not event["url"]:
+            event["url"] = "unknown"  # Fallback básico
+            logger.warning(f"[CSRFDefense:Crypto] URL faltante en evento, usando fallback 'unknown' (IP={event.get('ip')})")
+        
+        # cifrar payload si existe y no está vacío
+        if "payload" in event and event["payload"] and event["payload"] != "[]":
             try:
                 ctx = f"{event.get('ip','')}-{ts}".encode()
                 enc = aead_encrypt(json.dumps(event["payload"], ensure_ascii=False).encode("utf-8"), context=ctx)
@@ -218,11 +223,11 @@ def record_csrf_event(event: dict) -> None:
                 logger.info(f"[CSRFDefense:Crypto] CIFRADO EXITOSO: Payload cifrado para IP {event.get('ip')} (alg={enc['alg']}, len_cipher={len(enc['ciphertext'])})")
             except Exception as e:
                 logger.error(f"[CSRFDefense:Crypto] CIFRADO FALLÓ: Error cifrando payload para IP {event.get('ip')}: {e}")
-                # si falla, simplemente no incluimos payload
-                event.pop("payload", None)
+                # Mantener payload sin cifrar para registro (solo en desarrollo; en prod, elimina)
+                logger.warning(f"[CSRFDefense:Crypto] Manteniendo payload sin cifrar para registro (desarrollo)")
         else:
             logger.debug(f"[CSRFDefense:Crypto] No hay payload para cifrar en evento (IP={event.get('ip')}) - CIFRADO NO EJECUTADO")
-            # Para probar cifrado/descifrado, cifrar un payload de prueba
+            # Para probar cifrado/descifrado, cifrar un payload de prueba si no hay real
             try:
                 test_payload = {"test": "prueba_csrf"}
                 ctx = f"{event.get('ip','')}-{ts}".encode()
@@ -237,9 +242,10 @@ def record_csrf_event(event: dict) -> None:
                     logger.error(f"[CSRFDefense:Crypto] DESCIFRADO DE PRUEBA FALLÓ: Datos no coinciden")
             except Exception as e:
                 logger.error(f"[CSRFDefense:Crypto] CIFRADO/DESCIFRADO DE PRUEBA FALLÓ: {e}")
+        
         key = f"csrf_event:{ts}:{event.get('ip', '')}"
         cache.set(key, json.dumps(event, ensure_ascii=False), timeout=60 * 60 * 24)
-        logger.debug(f"[CSRFDefense:Crypto] Evento registrado en cache exitosamente (key={key})")
+        logger.debug(f"[CSRFDefense:Crypto] Evento registrado en cache exitosamente (key={key}, url={event.get('url')}, payload_present={bool(event.get('_payload_encrypted'))})")
     except Exception as e:
         logger.error(f"[CSRFDefense:Crypto] Error registrando evento: {e}")
 
@@ -329,7 +335,6 @@ def extract_parameters(request) -> List[str]:
     return params
 
 # FUNCIÓN ROBUSTA: Analizar payload en TODOS los campos (sin descuento)
-# FUNCIÓN ROBUSTA: Analizar payload en TODOS los campos (sin descuento)
 def analyze_payload(value: str) -> float:
     score = 0.0
     for patt, desc, weight in CSRF_PAYLOAD_PATTERNS:
@@ -416,6 +421,7 @@ class CSRFDefenseMiddleware(MiddlewareMixin):
         # 7) Análisis ROBUSTO de payload en TODOS los campos (sin descuento)
         payload_score = 0.0
         payload_summary: List[Dict[str, Any]] = []
+        full_payload = extract_payload_text(request)  # Extraer payload completo siempre
         try:
             # Analizar POST
             if hasattr(request, "POST"):
@@ -436,9 +442,9 @@ class CSRFDefenseMiddleware(MiddlewareMixin):
                             payload_summary.append({"field": key, "snippet": value[:300], "score": score})
         except Exception as e:
             logger.debug(f"Error analizando payload: {e}")
-
         if payload_score > 0:
             descripcion.append(f"Payload sospechoso detectado (score total: {payload_score})")
+
 
         # 8) Análisis de query string
         qs_score = analyze_query_string(request)
@@ -454,17 +460,23 @@ class CSRFDefenseMiddleware(MiddlewareMixin):
         total_signals = len(descripcion)
         if descripcion and total_signals >= CSRF_DEFENSE_MIN_SIGNALS:
             w_csrf = getattr(settings, "CSRF_DEFENSE_WEIGHT", 0.2)
-            s_csrf = w_csrf * total_signals + payload_score  # Score full sin descuento
+            s_csrf = w_csrf * total_signals + payload_score
+            url = request.build_absolute_uri()  # Fallback si falla
+            if not url:
+                url = f"{request.META.get('HTTP_HOST', 'unknown')}{request.path}"
+                logger.warning(f"[CSRFDefense] URL build_absolute_uri falló, usando fallback: {url}")
+            
             request.csrf_attack_info = {
                 "ip": client_ip,
                 "tipos": ["CSRF"],
                 "descripcion": descripcion,
-                "payload": json.dumps(payload_summary, ensure_ascii=False)[:1000],
+                "payload": json.dumps(payload_summary, ensure_ascii=False)[:1000] if payload_summary else json.dumps({"full_payload": full_payload[:500]}, ensure_ascii=False),  # Registrar payload completo si vacío
                 "score": s_csrf,
+                "url": url,
             }
             logger.warning(
-                "CSRF detectado desde IP %s: %s ; path=%s ; Content-Type=%s ; score=%.2f (Ultra-Robust: nada ignorado)",
-                client_ip, descripcion, request.path, content_type, s_csrf
+                "CSRF detectado desde IP %s: %s ; path=%s ; Content-Type=%s ; score=%.2f ; url=%s ; payload_summary=%s",
+                client_ip, descripcion, request.path, content_type, s_csrf, url, payload_summary
             )
             # Registrar evento cifrado para auditoría
             try:
@@ -473,16 +485,16 @@ class CSRFDefenseMiddleware(MiddlewareMixin):
                     "ip": client_ip,
                     "score": s_csrf,
                     "desc": descripcion,
-                    "url": request.build_absolute_uri(),
-                    "payload": payload_summary,  # se cifrará en record_csrf_event
+                    "url": url,  # Pasar URL
+                    "payload": payload_summary if payload_summary else [],  # Pasar siempre lista
                 })
             except Exception:
                 logger.exception("failed to record CSRF event")
         else:
             if descripcion:
                 logger.debug(f"[CSRFDefense] low-signals ({total_signals}) not marking: {descripcion}")
-
         return None
+
 
 # =====================================================
 # ===              INFORMACIÓN EXTRA                ===

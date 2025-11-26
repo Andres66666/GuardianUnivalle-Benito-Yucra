@@ -13,7 +13,7 @@
         Guardian Univalle Benito Yucra
       </h1>
       <p style="margin: 5px 0 0 0; font-size: 18px; color: #444; font-family: 'Segoe UI', sans-serif;">
-        Framework de detección y defensa de amenazas web para Django.
+        Algoritmos de detección y defensa de amenazas web para Django.
       </p>
     </td>
     <td style="border: none; padding: 10px 20px;">

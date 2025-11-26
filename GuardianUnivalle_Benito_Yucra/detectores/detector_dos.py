@@ -7,8 +7,8 @@ from typing import Dict, List, Set
 from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
 from django.http import HttpResponseForbidden 
-import requests # ⬅️ Necesario para la función de scraping
-import re      # ⬅️ Necesario para el parseo de IPs/CIDR
+import requests # Necesario para la función de scraping
+import re      # Necesario para el parseo de IPs/CIDR
 from ipaddress import ip_address, IPv4Address, IPv4Network # Necesario para el Escaneo Avanzado (CIDR)
 
 # =====================================================
@@ -27,15 +27,12 @@ if not logger.handlers:
 # URLs CONCEPTUALES de donde EXTRAERÍAS IPs/CIDR
 IP_BLACKLIST_SOURCES = [
     # 1. FireHOL (Agregador General de Nivel 1)
-    # Resultado: Éxito al obtener 4438 IPs/CIDR
     "https://iplists.firehol.org/files/firehol_level1.netset",
 
     # 2. Abuse.ch Feodo Tracker (Botnets C&C)
-    # Resultado: Éxito al obtener 2 IPs/CIDR (puede ser bajo, pero es funcional)
     "https://feodotracker.abuse.ch/downloads/ipblocklist.txt",
 
     # 3. Tor Project (Nodos de Salida)
-    # Resultado: Éxito al obtener 1166 IPs/CIDR
     "https://check.torproject.org/torbulkexitlist?ip=1.1.1.1" 
 ]
 
@@ -70,7 +67,6 @@ def fetch_and_parse_blacklists() -> Set[str]:
             
             
             global_blacklist.update(cleaned_ips)
-            logger.info(f"[Threat Intel] Éxito al obtener {len(cleaned_ips)} IPs/CIDR de {url}")
             
         except requests.exceptions.RequestException as e:
             logger.error(f"[Threat Intel] Error de conexión con {url}: {e}")
@@ -133,8 +129,7 @@ try:
         # Escribe cada IP/CIDR en una nueva línea
         for ip in sorted(list(IP_BLACKLIST)): # Usamos sorted() para orden alfabético/numérico
             f.write(f"{ip}\n")
-    logger.info(f"Lista Negra Externa GUARDADA en {output_filename} para inspección.")
-    logger.info(f"Lista Negra Externa cargada con {len(IP_BLACKLIST)} IPs/CIDR.")
+    logger.info(f"Lista Negra Externa cargada y guardada con {len(IP_BLACKLIST)} IPs/CIDR.")
 except Exception as e:
     logger.error(f"Error al cargar la IP Blacklist: {e}. Usando lista vacía.")
     IP_BLACKLIST = set()
@@ -158,7 +153,6 @@ def get_client_ip(request) -> str:
 
 def limpiar_registro_global():
     """Elimina IPs sin actividad reciente y desbloquea IPs temporales."""
-    # ... (La implementación de limpiar_registro_global permanece igual)
     ahora = time.time()
     expiracion = VENTANA_SEGUNDOS * 2
     inactivas = []
@@ -178,7 +172,6 @@ def limpiar_registro_global():
 
 def limpiar_registro(ip: str):
     """Limpia peticiones antiguas fuera de la ventana de tiempo."""
-    # ... (La implementación de limpiar_registro permanece igual)
     ahora = time.time()
     if ip not in REGISTRO_SOLICITUDES:
         REGISTRO_SOLICITUDES[ip] = deque()
@@ -188,7 +181,6 @@ def limpiar_registro(ip: str):
 
 def calcular_nivel_amenaza_dos(tasa_peticion: int, limite: int = LIMITE_PETICIONES) -> float:
     """Calcula la puntuación de amenaza DoS (Rate Limiting)."""
-    # ... (La implementación de calcular_nivel_amenaza_dos permanece igual)
     proporcion = tasa_peticion / max(limite, 1)
     s_dos = PESO_DOS * min(proporcion, 2.0)
     return round(min(s_dos, 1.0), 3)
@@ -218,7 +210,6 @@ def registrar_evento(tipo: str, descripcion: str, severidad: str = "MEDIA"):
 
 def detectar_dos(ip: str, tasa_peticion: int, limite: int = LIMITE_PETICIONES) -> bool:
     """Evalúa si la tasa de peticiones excede el umbral permitido y aplica mitigación."""
-    # ... (La implementación de detectar_dos permanece igual)
     if tasa_peticion > limite:
         registrar_evento(
             tipo="DoS",
@@ -237,7 +228,6 @@ def detectar_dos(ip: str, tasa_peticion: int, limite: int = LIMITE_PETICIONES) -
 
 def analizar_headers_avanzado(user_agent: str, referer: str) -> List[str]:
     """Detecta patrones sospechosos, penalizando User-Agents automatizados."""
-    # ... (La implementación de analizar_headers_avanzado permanece igual)
     sospechas = []
     
     if not user_agent or len(user_agent) < 10 or user_agent.lower() == "python-requests/2.25.1": 
@@ -279,6 +269,14 @@ class DOSDefenseMiddleware(MiddlewareMixin):
             )
             return HttpResponseForbidden("Acceso denegado temporalmente por comportamiento sospechoso.")
 
+        # === NUEVA VERIFICACIÓN: Si ya detectado por XSS o CSRF, saltar análisis DoS ===
+        # Verifica si los middlewares XSS o CSRF ya han procesado y detectado algo
+        if (hasattr(request, 'xss_attack_info') or hasattr(request, 'xss_block') or hasattr(request, 'xss_challenge') or
+            hasattr(request, 'csrf_attack_info') or hasattr(request, 'csrf_block') or hasattr(request, 'csrf_challenge')):
+            logger.info(f"[DOSDefense] Solicitud desde IP {client_ip} ya detectada por XSS o CSRF. Saltando análisis DoS para evitar superposición.")
+            # No procesar DoS; permitir que continúe al siguiente middleware (e.g., AuditoriaMiddleware)
+            return None
+
         # 2. ANÁLISIS DE LA PETICIÓN Y CÁLCULO DE MÉTRICAS BASE
         user_agent = request.META.get("HTTP_USER_AGENT", "Desconocido")
         referer = request.META.get("HTTP_REFERER", "")
@@ -293,7 +291,7 @@ class DOSDefenseMiddleware(MiddlewareMixin):
         
         # 3. CÁLCULO DE LOS COMPONENTES DEL SCORE DE AMENAZA
 
-        # S_dos: Tasa de Petición (Rate Limiting)
+        # S_dos: Tasa de Petición (Limitación de velocidad)
         nivel_dos = calcular_nivel_amenaza_dos(tasa) 
         
         # S_blacklist: Escaneo Avanzado (CIDR)
@@ -340,7 +338,6 @@ class DOSDefenseMiddleware(MiddlewareMixin):
                 client_ip,
                 " ; ".join(descripcion),
             )
-            
             request.dos_attack_info = {
                 "ip": client_ip,
                 "tipos": ["DoS", "Scraping/Escaneo"],
@@ -348,5 +345,4 @@ class DOSDefenseMiddleware(MiddlewareMixin):
                 "payload": json.dumps({"user_agent": user_agent, "referer": referer, "path": path}),
                 "score": S_total,
             }
-
         return None

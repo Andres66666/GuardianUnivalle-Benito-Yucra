@@ -10,6 +10,7 @@ SQLI Defense Middleware con criptografía (AES-GCM / ChaCha20-Poly1305, HMAC-SHA
     SQLI_DEFENSE_TRUSTED_URLS = []
     SQLI_DEFENSE_USE_CHALLENGE = False
 """
+
 import base64
 import os
 import json
@@ -70,9 +71,6 @@ ARGON2_CONFIG = getattr(settings, "SQLI_DEFENSE_ARGON2", {
 HMAC_LABEL = b"sqlidefense-hmac"
 AEAD_LABEL = b"sqlidefense-aead"
 
-# ---------- reutilizamos tus patrones/constantes ----------
-# (Corta la lista por brevedad en este snippet; asume que SQL_PATTERNS y demás vienen de tu original)
-# Para simplicidad aquí importamos o pegamos tu SQL_PATTERNS y configs (usa el tuyo completo en producción).
 SQL_PATTERNS: List[Tuple[re.Pattern, str, float]] = [
     (re.compile(r"\bunion\b\s+(all\s+)?\bselect\b", re.I), "UNION SELECT (exfiltración)", 0.95),
     (re.compile(r"\bselect\b\s+.*\bfrom\b\s+.+\bwhere\b", re.I | re.S), "SELECT ... FROM ... WHERE (consulta completa)", 0.7),
@@ -342,7 +340,7 @@ def saturate_score(raw_score: float) -> float:
     except Exception:
         return 0.0
 
-# Reusa tu detector (simplificado aquí; pega tu versión completa)
+# Reusaremos el detector
 def detect_sql_injection(text: str) -> Dict:
     norm = normalize_input(text or "")
     score = 0.0
@@ -370,7 +368,7 @@ def detect_sql_injection(text: str) -> Dict:
         "prob_list": prob_list,
     }
 
-# Redactar payload summary (ahora encripta snippets antes de loggear)
+# Redactar payload summary (ahora se encripta snippets antes de loggear)
 def redact_and_encrypt_payload(payload_summary: List[Dict[str, Any]], context: bytes = b"") -> List[Dict[str, Any]]:
     encrypted_list = []
     for p in payload_summary:
@@ -393,7 +391,7 @@ def redact_and_encrypt_payload(payload_summary: List[Dict[str, Any]], context: b
             encrypted_list.append({"field": p.get("field"), "snippet": "<REDACTED>", "sensitive": is_sensitive})
     return encrypted_list
 
-# Cache helpers (igual que antes)
+# Cache helpers
 def cache_block_ip_with_backoff(ip: str):
     if not ip:
         return 0, 0
@@ -440,9 +438,8 @@ def record_detection_event(event: dict) -> None:
                     "ciphertext": base64.b64encode(enc["ciphertext"]).decode(),
                     "hmac": base64.b64encode(htag).decode(),
                 }
-                del event["payload"]  # no almacenar plaintext
+                del event["payload"]
             except Exception:
-                # si falla, simplemente no incluimos payload
                 event.pop("payload", None)
         key = f"sqli_event:{ts}:{event.get('ip', '')}"
         cache.set(key, json.dumps(event, ensure_ascii=False), timeout=60 * 60 * 24)
@@ -596,7 +593,6 @@ class SQLIDefenseCryptoMiddleware(MiddlewareMixin):
         except Exception:
             logger.exception("failed to record event")
 
-        # Políticas de bloqueo (igual que antes, pero preferimos p_attack)
         # Políticas de bloqueo: setea flags en lugar de retornar HttpResponseForbidden
         if p_attack >= getattr(settings, "SQLI_DEFENSE_P_ATTACK_BLOCK", 0.97):
             level, timeout = cache_block_ip_with_backoff(client_ip)
