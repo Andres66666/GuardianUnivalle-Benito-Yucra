@@ -8,7 +8,6 @@
 # - AES-GCM/ChaCha20-Poly1305 para cifrar cookies sensibles
 # - HKDF para derivar claves
 # - Argon2id para seguridad de claves derivadas
-# - TLS 1.3 recomendado en configuración del servidor (no implementado aquí, pero documentado)
 # - Registro cifrado de eventos y payloads
 # xss_defense_crypto.py
 # GuardianUnivalle_Benito_Yucra/detectores/xss_defense_crypto.py
@@ -20,7 +19,6 @@
 # - AES-GCM/ChaCha20-Poly1305 para cifrar cookies sensibles
 # - HKDF para derivar claves
 # - Argon2id para seguridad de claves derivadas
-# - TLS 1.3 recomendado en configuración del servidor (no implementado aquí, pero documentado)
 # - Registro cifrado de eventos y payloads
 # xss_defense_crypto.py
 # GuardianUnivalle_Benito_Yucra/detectores/xss_defense_crypto.py
@@ -32,19 +30,18 @@
 # - AES-GCM/ChaCha20-Poly1305 para cifrar cookies sensibles
 # - HKDF para derivar claves
 # - Argon2id para seguridad de claves derivadas
-# - TLS 1.3 recomendado en configuración del servidor (no implementado aquí, pero documentado)
 # - Registro cifrado de eventos y payloads
 
-from __future__ import annotations
-import json
-import logging
-import re
-import math
-import base64
-import os
-import time
-from typing import List, Tuple, Dict, Any
-from django.utils.deprecation import MiddlewareMixin
+from __future__ import annotations # 
+import json # Permite serializar y deserializar datos en formato JSON.
+import logging  # Manejo de logs para registrar eventos, errores y actividad del middleware.
+import re  # Expresiones regulares para validar, buscar o limpiar patrones en cadenas.
+import math # Funciones matemáticas avanzadas (ceil, floor, log, etc.).
+import base64 # Permite codificar/decodificar datos en Base64, útil para manejar claves o tokens.
+import os   # Proporciona funciones del sistema operativo, como generar bytes aleatorios (os.urandom).
+import time  # Funciones relacionadas al tiempo: timestamps, delays, mediciones, etc.
+from typing import List, Tuple, Dict, Any   # Tipado opcional para mejorar claridad y autocompletado.
+from django.utils.deprecation import MiddlewareMixin # 
 from django.conf import settings
 from django.http import HttpResponseForbidden, HttpResponse
 from django.core.cache import cache
@@ -144,8 +141,9 @@ SENSITIVE_DISCOUNT = 0.5
 # ----------------------------
 # Funciones criptográficas (derivación, AEAD, HMAC, hash)
 # ----------------------------
-def derive_key(label: bytes, context: bytes = b"") -> bytes:
-    salt = (label + context)[:16].ljust(16, b"\0")
+# deriva una clave simétrica de 32 bytes a partir de MASTER_KEY usando Argon2 y HKDF (con fallback a HKDF directo).
+def derive_key(label: bytes, context: bytes = b"") -> bytes:   # generacion de claves  
+    salt = (label + context)[:16].ljust(16, b"\0") 
     try:
         raw = hash_secret_raw(secret=MASTER_KEY if isinstance(MASTER_KEY, (bytes, bytearray)) else MASTER_KEY.encode(),
                               salt=salt,
@@ -160,7 +158,9 @@ def derive_key(label: bytes, context: bytes = b"") -> bytes:
         hk = HKDF(algorithm=hashes.SHA256(), length=32, salt=salt, info=label + context)
         return hk.derive(MASTER_KEY if isinstance(MASTER_KEY, bytes) else MASTER_KEY.encode())
 
-def aead_encrypt(plaintext: bytes, aad: bytes = b"", context: bytes = b"") -> Dict[str, bytes]:
+# ciframos la clave secreta
+# cifra plaintext con AES-GCM o ChaCha20-Poly1305 y devuelve dict {alg, nonce, ciphertext}.
+def aead_encrypt(plaintext: bytes, aad: bytes = b"", context: bytes = b"") -> Dict[str, bytes]: 
     key = derive_key(AEAD_LABEL, context)
     if AEAD_CHOICE == "CHACHA20":
         aead = ChaCha20Poly1305(key)
@@ -172,8 +172,10 @@ def aead_encrypt(plaintext: bytes, aad: bytes = b"", context: bytes = b"") -> Di
         nonce = os.urandom(12)
         ct = aead.encrypt(nonce, plaintext, aad)
         return {"alg": "AES-GCM", "nonce": nonce, "ciphertext": ct}
-
-def aead_decrypt(payload: Dict[str, bytes], aad: bytes = b"", context: bytes = b"") -> bytes:
+    
+# funcion para desifrado 
+# descifra y verifica un payload AEAD (AES-GCM/ChaCha20) y devuelve los bytes de plaintext.
+def aead_decrypt(payload: Dict[str, bytes], aad: bytes = b"", context: bytes = b"") -> bytes: 
     key = derive_key(AEAD_LABEL, context)
     alg = payload.get("alg", "AES-GCM")
     nonce = payload.get("nonce")
@@ -186,14 +188,18 @@ def aead_decrypt(payload: Dict[str, bytes], aad: bytes = b"", context: bytes = b
     else:
         aead = AESGCM(key)
         return aead.decrypt(nonce, ct, aad)
-
+    
+# veficacion de la fima con HMAC
+# calcula un HMAC-SHA256 sobre unos datos usando una clave derivada.
 def compute_hmac(data: bytes, context: bytes = b"") -> bytes:
     key = derive_key(HMAC_LABEL, context)
     h = crypto_hmac.HMAC(key, hashes.SHA256())
     h.update(data)
     return h.finalize()
 
-def verify_hmac(data: bytes, tag: bytes, context: bytes = b"") -> bool:
+# La función verify_hmac comprueba si un tag HMAC (firma) es válido para unos datos dados usando una clave derivada del 
+# sistema. Devuelve True si la verificación pasa y False si la firma no coincide. 
+def verify_hmac(data: bytes, tag: bytes, context: bytes = b"") -> bool: 
     key = derive_key(HMAC_LABEL, context)
     h = crypto_hmac.HMAC(key, hashes.SHA256())
     h.update(data)
@@ -203,9 +209,11 @@ def verify_hmac(data: bytes, tag: bytes, context: bytes = b"") -> bool:
     except InvalidSignature:
         return False
 
-def compute_hash(data: bytes) -> str:
+# La función compute_hash toma bytes como entrada, elige entre SHA3‑256 o SHA‑256 según la constante global HASH_CHOICE, 
+# calcula el resumen con la API Hash de cryptography, codifica el resultado en Base64 y lo devuelve como cadena UTF‑8.
+def compute_hash(data: bytes) -> str: 
     if HASH_CHOICE == "SHA3":
-        h = hashes.Hash(hashes.SHA3_256())
+        h = hashes.Hash(hashes.SHA3_256()) 
     else:
         h = hashes.Hash(hashes.SHA256())
     h.update(data)
@@ -217,7 +225,9 @@ def compute_hash(data: bytes) -> str:
 SATURATION_C = getattr(settings, "XSS_DEFENSE_SATURATION_C", 1.5)
 SATURATION_ALPHA = getattr(settings, "XSS_DEFENSE_SATURATION_ALPHA", 2.0)
 
-def saturate_score(raw_score: float) -> float:
+# normaliza un puntaje numérico mediante la función sigmoide (logística). Intenta convertir las entradas 
+# globales a float y devuelve el valor entre 0.0 y 1.0 calculado por la fórmula sigmoide; si ocurre cualquier excepción retorna 0.0.
+def saturate_score(raw_score: float) -> float: 
     try:
         x = float(raw_score)
         alpha = float(SATURATION_ALPHA)
@@ -229,16 +239,19 @@ def saturate_score(raw_score: float) -> float:
 # ----------------------------
 # IP robusta
 # ----------------------------
-def _is_valid_ip(ip: str) -> bool:
+# validar si la cadena ip es una dirección IPv4 o IPv6 válida usando el módulo estándar ipaddress.
+# Si ipaddress.ip_address(ip) no lanza excepción devuelve True; si ocurre cualquier excepción devuelve False.
+def _is_valid_ip(ip: str) -> bool: 
     try:
         import ipaddress
         ipaddress.ip_address(ip)
         return True
     except Exception:
         return False
-
+# extrae la IP del cliente desde los encabezados de la petición HTTP (preferencia X-Forwarded-For, 
+# luego varios encabezados alternativos, y finalmente REMOTE_ADDR). Devuelve la primera IP encontrada o cadena vacía si no hay ninguna.
 def get_client_ip(request) -> str:
-    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")  # 
     if xff:
         parts = [p.strip() for p in xff.split(",") if p.strip()]
         if parts:
@@ -251,310 +264,324 @@ def get_client_ip(request) -> str:
 
 # ----------------------------
 # Extraer payload
-# ----------------------------
-def extract_body_as_map(request) -> Dict[str, Any]:
+# ---------------------------- 
+#extraer del request un mapa (dict) con el cuerpo de la petición siguiendo este orden:
+def extract_body_as_map(request) -> Dict[str, Any]:  # Extrae body como dict desde request
     try:
-        ct = request.META.get("CONTENT_TYPE", "")
-        if "application/json" in ct:
-            raw = request.body.decode("utf-8") or "{}"
+        ct = request.META.get("CONTENT_TYPE", "")  # Obtiene Content-Type del header HTTP
+        if "application/json" in ct:  # Si es JSON
+            raw = request.body.decode("utf-8") or "{}"  # Decodifica body UTF-8, default "{}" si vacío
             try:
-                data = json.loads(raw)
-                if isinstance(data, dict):
-                    return data
-                return {"raw": raw}
-            except Exception:
-                return {"raw": raw}
+                data = json.loads(raw)  # Parsea JSON
+                if isinstance(data, dict):  # Si resultado es dict
+                    return data  # Devuelve directamente
+                return {"raw": raw}  # Si no es dict (lista), envuelve en clave 'raw'
+            except Exception:  # Si JSON parsing falla
+                return {"raw": raw}  # Devuelve raw como fallback
         try:
-            post = request.POST.dict()
-            if post:
-                return post
-        except Exception:
-            pass
-        raw = request.body.decode("utf-8", errors="ignore")
-        if raw:
-            return {"raw": raw}
-    except Exception:
-        pass
-    return {}
+            post = request.POST.dict()  # Intenta extraer datos de formulario POST
+            if post:  # Si hay datos POST
+                return post  # Devuelve dict de formulario
+        except Exception:  # Si POST parse falla
+            pass  # Continúa al siguiente intento
+        raw = request.body.decode("utf-8", errors="ignore")  # Decodifica body ignorando errores
+        if raw:  # Si hay contenido
+            return {"raw": raw}  # Devuelve como fallback raw
+    except Exception:  # Si falla todo
+        pass  # Continúa
+    return {}  # Devuelve dict vacío como fallback final
 
 # ----------------------------
 # Detect XSS en valor
 # ----------------------------
-def detect_xss_in_value(value: str, is_sensitive: bool = False) -> Tuple[float, List[str], List[str]]:
-    if not value:
+# analiza un valor buscando patrones XSS, calcula un score y devuelve (score, descripciones, patrones).
+def detect_xss_in_value(value: str, is_sensitive: bool = False) -> Tuple[float, List[str], List[str]]:  # Detecta XSS en un valor y retorna (score, descripciones, patrones)
+    if not value:  # Si el valor está vacío, retorna sin detecciones
         return 0.0, [], []
-    score_total = 0.0
-    descripcion = []
-    matches = []
-    value = value.lower().strip()
-    if _BLEACH_AVAILABLE:
-        cleaned = bleach.clean(value, strip=True)
-        if cleaned != value:
-            score_total += 0.5
-            descripcion.append("Contenido alterado por sanitización (bleach)")
-    for patt, msg, weight in XSS_PATTERNS:
-        occ = len(patt.findall(value))
-        if occ > 0:
-            added = sum(weight * (0.5 ** i) for i in range(occ))
-            if is_sensitive:
-                added *= SENSITIVE_DISCOUNT
-            score_total += added
-            descripcion.append(msg)
-            matches.append(patt.pattern)
-    return round(score_total, 3), descripcion, matches
+    score_total = 0.0  # Acumula puntaje de detección
+    descripcion = []  # Lista de descripciones de firmas encontradas
+    matches = []  # Patrones que coincidieron
+    value = value.lower().strip()  # Normaliza a minúsculas y elimina espacios alrededor
+    if _BLEACH_AVAILABLE:  # Si bleach está instalado, sanitiza y penaliza cambios
+        cleaned = bleach.clean(value, strip=True)  # Limpia el valor con bleach
+        if cleaned != value:  # Si bleach modificó el contenido, sumamos puntaje
+            score_total += 0.5  # Penalización por alteración de sanitización
+            descripcion.append("Contenido alterado por sanitización (bleach)")  # Añade descripción
+    for patt, msg, weight in XSS_PATTERNS:  # Itera patrones XSS con su peso
+        occ = len(patt.findall(value))  # Cuenta ocurrencias del patrón
+        if occ > 0:  # Si hay ocurrencias
+            added = sum(weight * (0.5 ** i) for i in range(occ))  # Aplica decaimiento por múltiples ocurrencias
+            if is_sensitive:  # Si el campo es sensible, aplica descuento
+                added *= SENSITIVE_DISCOUNT  # Multiplica por factor de descuento
+            score_total += added  # Acumula puntaje
+            descripcion.append(msg)  # Añade mensaje descriptivo del patrón
+            matches.append(patt.pattern)  # Guarda el patrón coincidente
+    return round(score_total, 3), descripcion, matches  # Retorna puntaje redondeado y listas
+
 
 # ----------------------------
 # Conversión a probabilidad
 # ----------------------------
-def weight_to_prob(w: float) -> float:
+# convierte un peso a probabilidad usando 1 - exp(-w) y aplica clamp.
+def weight_to_prob(w: float) -> float: 
     try:
-        q = 1.0 - math.exp(-max(w, 0.0))
-        return min(max(q, 0.0), 0.999999)
-    except Exception:
-        return min(max(w, 0.0), 0.999999)
-
+        q = 1.0 - math.exp(-max(w, 0.0))  # Convierte peso a probabilidad (mapa exponencial)
+        return min(max(q, 0.0), 0.999999)  # Clamp para evitar 1.0 exacto
+    except Exception:  # En caso de error numérico, fallback conservador
+        return min(max(w, 0.0), 0.999999)  # Retorna valor clamped
+    
+# combina probabilidades independientes y retorna la probabilidad de al menos un match.
 def combine_probs(qs: List[float]) -> float:
-    prod = 1.0
-    for q in qs:
-        prod *= (1.0 - q)
-    return 1.0 - prod
+    prod = 1.0  # Producto de (1 - q_i)
+    for q in qs: # recorrido de q 
+        prod *= (1.0 - q)  # Multiplica probabilidades complementarias
+    return 1.0 - prod  # Probabilidad combinada de al menos una detección
 
 # ----------------------------
 # Firmar/cifrar cookies (integración cripto)
 # ----------------------------
+# firma un valor (HMAC-SHA256) y devuelve "valor.tag_base64".
 def sign_cookie_value(value: str, context: bytes = b"") -> str:
-    """Firma un valor de cookie con HMAC-SHA256 para evitar alteraciones por XSS."""
-    data = value.encode("utf-8")
-    tag = compute_hmac(data, context)
-    return f"{value}.{base64.b64encode(tag).decode()}"
+    """Firma un valor de cookie con HMAC-SHA256 para evitar alteraciones por XSS."""  # Docstring: propósito de la función
+    data = value.encode("utf-8")  # Codifica el valor a bytes UTF-8
+    tag = compute_hmac(data, context)  # Calcula HMAC sobre los datos
+    return f"{value}.{base64.b64encode(tag).decode()}"  # Retorna valor.sello en base64
 
+# verifica la firma de una cookie y retorna el valor original o lanza ValueError.
 def verify_cookie_signature(signed_value: str, context: bytes = b"") -> str:
-    """Verifica la firma de una cookie y retorna el valor original si es válido."""
+    """Verifica la firma de una cookie y retorna el valor original si es válido."""  # Docstring
     try:
-        value, tag_b64 = signed_value.rsplit(".", 1)
-        tag = base64.b64decode(tag_b64)
-        if verify_hmac(value.encode("utf-8"), tag, context):
-            return value
+        value, tag_b64 = signed_value.rsplit(".", 1)  # Separa valor y tag (último punto)
+        tag = base64.b64decode(tag_b64)  # Decodifica tag base64
+        if verify_hmac(value.encode("utf-8"), tag, context):  # Verifica HMAC
+            return value  # Retorna valor si firma válida
         else:
-            raise ValueError("Invalid signature")
+            raise ValueError("Invalid signature")  # Lanza error si firma inválida
     except Exception:
-        raise ValueError("Invalid signed cookie")
-
+        raise ValueError("Invalid signed cookie")  # Normaliza excepción para caller
+    
+# cifra un valor de cookie con AEAD y devuelve su representación serializada en Base64.
 def encrypt_cookie_value(value: str, context: bytes = b"") -> str:
-    """Cifra un valor de cookie sensible con AEAD."""
-    enc = aead_encrypt(value.encode("utf-8"), context=context)
-    return base64.b64encode(json.dumps(enc).encode()).decode()
+    """Cifra un valor de cookie sensible con AEAD."""  # Docstring
+    enc = aead_encrypt(value.encode("utf-8"), context=context)  # Cifra con AEAD
+    return base64.b64encode(json.dumps(enc).encode()).decode()  # Serializa y codifica en base64
 
+# decodifica y descifra una cookie cifrada y devuelve el texto plano.
 def decrypt_cookie_value(encrypted_value: str, context: bytes = b"") -> str:
-    """Descifra un valor de cookie."""
+    """Descifra un valor de cookie."""  # Docstring
     try:
-        enc = json.loads(base64.b64decode(encrypted_value))
-        plaintext = aead_decrypt(enc, context=context)
-        return plaintext.decode("utf-8")
+        enc = json.loads(base64.b64decode(encrypted_value))  # Decodifica y parsea el payload cifrado
+        plaintext = aead_decrypt(enc, context=context)  # Descifra con AEAD
+        return plaintext.decode("utf-8")  # Retorna texto decodificado
     except Exception:
-        raise ValueError("Invalid encrypted cookie")
+        raise ValueError("Invalid encrypted cookie")  # Lanza error si falla
 
 # ----------------------------
 # Funciones de cache para bloqueo (similar a SQLi, pero con prefijo XSS_)
 # ----------------------------
+# incrementa el nivel de backoff para una IP y la marca como bloqueada en cache con timeout
 def cache_block_ip_with_backoff(ip: str):
-    if not ip:
+    if not ip:  # Si no hay IP, no hace nada
         return 0, 0
-    level_key = f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}:level"
-    level = cache.get(level_key, 0) or 0
-    level = int(level) + 1
-    cache.set(level_key, level, timeout=60 * 60 * 24 * 7)
-    durations = XSS_DEFAULT_BACKOFF_LEVELS
-    idx = min(level, len(durations) - 1)
-    timeout = durations[idx]
-    cache.set(f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}", True, timeout=timeout)
-    return level, timeout
+    level_key = f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}:level"  # Clave para nivel de backoff
+    level = cache.get(level_key, 0) or 0  # Lee nivel actual o 0
+    level = int(level) + 1  # Incrementa nivel
+    cache.set(level_key, level, timeout=60 * 60 * 24 * 7)  # Guarda nivel con TTL semanal
+    durations = XSS_DEFAULT_BACKOFF_LEVELS  # Niveles de backoff configurados
+    idx = min(level, len(durations) - 1)  # Índice seguro en la lista de duraciones
+    timeout = durations[idx]  # Tiempo de bloqueo elegido
+    cache.set(f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}", True, timeout=timeout)  # Marca IP bloqueada en cache
+    return level, timeout  # Retorna nivel y timeout aplicados
 
+# comprueba en cache si una IP está bloqueada.
 def is_ip_blocked(ip: str) -> bool:
-    if not ip:
+    if not ip:  # Si no hay IP, no está bloqueada
         return False
-    return bool(cache.get(f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}"))
+    return bool(cache.get(f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}"))  # Retorna estado booleano de bloqueo
 
+# incrementa y devuelve el contador de intentos por IP en cache (window TTL)
 def incr_ip_counter(ip: str) -> int:
-    if not ip:
+    if not ip:  # Si no hay IP, no incrementa
         return 0
-    key = f"{XSS_CACHE_COUNTER_KEY_PREFIX}{ip}"
-    current = cache.get(key, 0)
+    key = f"{XSS_CACHE_COUNTER_KEY_PREFIX}{ip}"  # Clave contador por IP
+    current = cache.get(key, 0)  # Lee contador actual
     try:
-        current = int(current)
+        current = int(current)  # Intenta convertir a int
     except Exception:
-        current = 0
-    current += 1
-    cache.set(key, current, timeout=XSS_COUNTER_WINDOW)
-    return current
+        current = 0  # Fallback a 0 si lectura inválida
+    current += 1  # Incrementa contador
+    cache.set(key, current, timeout=XSS_COUNTER_WINDOW)  # Guarda contador con ventana TTL
+    return current  # Retorna nuevo valor del contador
 
 # ----------------------------
 # Registro cifrado de eventos (similar a SQLi para asegurar registro)
 # ----------------------------
-def record_xss_event(event: dict) -> None:
+# registra un evento XSS cifrando el payload si existe y almacenando el evento en cache.
+def record_xss_event(event: dict) -> None: 
     try:
-        ts = int(time.time())
+        ts = int(time.time())  # Timestamp del evento
         # cifrar payload si existe
         if "payload" in event and event["payload"]:
             try:
-                ctx = f"{event.get('ip','')}-{ts}".encode()
-                enc = aead_encrypt(json.dumps(event["payload"], ensure_ascii=False).encode("utf-8"), context=ctx)
-                htag = compute_hmac(enc["ciphertext"], context=ctx)
-                event["_payload_encrypted"] = {
-                    "alg": enc["alg"],
-                    "nonce": base64.b64encode(enc["nonce"]).decode(),
-                    "ciphertext": base64.b64encode(enc["ciphertext"]).decode(),
-                    "hmac": base64.b64encode(htag).decode(),
+                ctx = f"{event.get('ip','')}-{ts}".encode()  # Contexto único para cifrado/hmac
+                enc = aead_encrypt(json.dumps(event["payload"], ensure_ascii=False).encode("utf-8"), context=ctx)  # Cifra payload
+                htag = compute_hmac(enc["ciphertext"], context=ctx)  # Calcula HMAC sobre ciphertext
+                event["_payload_encrypted"] = {  # Inserta estructura cifrada en evento
+                    "alg": enc["alg"],  # Algoritmo AEAD usado
+                    "nonce": base64.b64encode(enc["nonce"]).decode(),  # Nonce en base64
+                    "ciphertext": base64.b64encode(enc["ciphertext"]).decode(),  # Ciphertext en base64
+                    "hmac": base64.b64encode(htag).decode(),  # HMAC en base64
                 }
-                del event["payload"]  # no almacenar plaintext
+                del event["payload"]  # Elimina plaintext para no almacenarlo
             except Exception:
                 # si falla, simplemente no incluimos payload
-                event.pop("payload", None)
-        key = f"xss_event:{ts}:{event.get('ip', '')}"
-        cache.set(key, json.dumps(event, ensure_ascii=False), timeout=60 * 60 * 24)
+                event.pop("payload", None)  # Elimina payload si quedó
+        key = f"xss_event:{ts}:{event.get('ip', '')}"  # Clave para almacenar evento en cache
+        cache.set(key, json.dumps(event, ensure_ascii=False), timeout=60 * 60 * 24)  # Guarda evento serializado por 1 día
     except Exception:
-        logger.exception("record_xss_event failed")
+        logger.exception("record_xss_event failed")  # Log de excepción si falla registro
 
 # ----------------------------
 # Middleware XSS con cripto integrado (ajustado para registro similar a SQLi y chequeo de bloqueo inicial)
 # ----------------------------
+# middleware que detecta XSS en la petición, registra el evento cifrado y aplica políticas de monitor/alert/block al request.
 class XSSDefenseCryptoMiddleware(MiddlewareMixin):
     def process_request(self, request):
-        client_ip = get_client_ip(request)
+        client_ip = get_client_ip(request)  # Obtiene IP cliente desde request
 
         # Chequear bloqueo inicial 
-        if is_ip_blocked(client_ip):
-            warning_message = (
+        if is_ip_blocked(client_ip):  # Si IP está bloqueada persistentemente
+            warning_message = (  # Mensaje de advertencia para el cliente bloqueado
                 "Acceso denegado. Su dirección IP y actividades han sido registradas y monitoreadas. "
                 "Continuar con estos intentos podría resultar en exposición pública, bloqueos permanentes o acciones legales. "
                 "Recomendamos detenerse inmediatamente para evitar riesgos mayores."
             )
-            logger.warning(f"[XSSBlock:Persistent] IP={client_ip} - Intento persistente de acceso bloqueado. Mensaje enviado.")
-            return HttpResponseForbidden(warning_message)
+            logger.warning(f"[XSSBlock:Persistent] IP={client_ip} - Intento persistente de acceso bloqueado. Mensaje enviado.")  # Log de bloqueo persistente
+            return HttpResponseForbidden(warning_message)  # Devuelve 403 con mensaje
 
-        trusted_ips: List[str] = getattr(settings, "XSS_DEFENSE_TRUSTED_IPS", [])
-        if client_ip in trusted_ips:
+        trusted_ips: List[str] = getattr(settings, "XSS_DEFENSE_TRUSTED_IPS", [])  # Lista de IPs confiables
+        if client_ip in trusted_ips:  # Si la IP está en trusted, omite comprobaciones
             return None
-        excluded_paths: List[str] = getattr(settings, "XSS_DEFENSE_EXCLUDED_PATHS", [])
-        if any(request.path.startswith(p) for p in excluded_paths):
+        excluded_paths: List[str] = getattr(settings, "XSS_DEFENSE_EXCLUDED_PATHS", [])  # Rutas excluidas
+        if any(request.path.startswith(p) for p in excluded_paths):  # Si la ruta está excluida, omitir
             return None
 
-        data = extract_body_as_map(request)
-        qs = request.META.get("QUERY_STRING", "")
+        data = extract_body_as_map(request)  # Extrae body como mapa/dict
+        qs = request.META.get("QUERY_STRING", "")  # Query string raw
         if qs:
-            data["_query_string"] = qs
-        if not data:
+            data["_query_string"] = qs  # Añade query string al mapa de datos
+        if not data:  # Si no hay datos, no continúa detección
             return None
 
-        total_score = 0.0
-        all_descriptions: List[str] = []
-        global_prob_list: List[float] = []
-        payload_summary = []
+        total_score = 0.0  # Puntaje bruto acumulado
+        all_descriptions: List[str] = []  # Todas las descripciones encontradas
+        global_prob_list: List[float] = []  # Lista de probabilidades por match
+        payload_summary = []  # Resumen de campos detectados
 
-        if isinstance(data, dict):
+        if isinstance(data, dict):  # Si data es dict, iterar campos
             for key, value in data.items():
-                is_sensitive = key.lower() in SENSITIVE_FIELDS
-                vtext = value
-                if isinstance(value, (dict, list)):
+                is_sensitive = key.lower() in SENSITIVE_FIELDS  # Marca si campo sensible
+                vtext = value  # Valor a procesar
+                if isinstance(value, (dict, list)):  # Si es estructura anidada, serializar
                     try:
-                        vtext = json.dumps(value, ensure_ascii=False)
+                        vtext = json.dumps(value, ensure_ascii=False)  # Serializa JSON para análisis
                     except Exception:
-                        vtext = str(value)
+                        vtext = str(value)  # Fallback a str si falla
                 else:
-                    vtext = str(value or "")
-                s, descs, matches = detect_xss_in_value(vtext, is_sensitive)
-                total_score += s
-                all_descriptions.extend(descs)
+                    vtext = str(value or "")  # Asegura string (no None)
+                s, descs, matches = detect_xss_in_value(vtext, is_sensitive)  # Detecta XSS en el valor
+                total_score += s  # Acumula puntaje
+                all_descriptions.extend(descs)  # Agrega descripciones
                 for m in matches:
-                    q = weight_to_prob(s)
-                    global_prob_list.append(q)
+                    q = weight_to_prob(s)  # Convierte peso a probabilidad
+                    global_prob_list.append(q)  # Añade a lista global
                 if s > 0:
-                    payload_summary.append({"field": key, "snippet": vtext[:300], "sensitive": is_sensitive})
-        else:
-            raw = str(data)
-            s, descs, matches = detect_xss_in_value(raw)
+                    payload_summary.append({"field": key, "snippet": vtext[:300], "sensitive": is_sensitive})  # Resumen del payload si detectado
+        else:  # Si data no es dict (raw), tratar como texto
+            raw = str(data)  # Forzar a string
+            s, descs, matches = detect_xss_in_value(raw)  # Detectar en raw
             total_score += s
             all_descriptions.extend(descs)
             for m in matches:
                 q = weight_to_prob(s)
                 global_prob_list.append(q)
             if s > 0:
-                payload_summary.append({"field": "raw", "snippet": raw[:500], "sensitive": False})
+                payload_summary.append({"field": "raw", "snippet": raw[:500], "sensitive": False})  # Resumen para raw
 
-        if total_score == 0:
+        if total_score == 0:  # Si no hay hallazgos, terminar
             return None
 
-        p_attack = combine_probs(global_prob_list) if global_prob_list else 0.0
-        s_norm = saturate_score(total_score)
-        url = request.build_absolute_uri()
-        payload_for_request = json.dumps(payload_summary, ensure_ascii=False)[:2000]
+        p_attack = combine_probs(global_prob_list) if global_prob_list else 0.0  # Probabilidad combinada de ataque
+        s_norm = saturate_score(total_score)  # Normaliza puntaje con sigmoide
+        url = request.build_absolute_uri()  # URL completa de la petición
+        payload_for_request = json.dumps(payload_summary, ensure_ascii=False)[:2000]  # Limita tamaño del payload para logs
 
         logger.warning(
             "[XSSDetect] IP=%s URL=%s ScoreRaw=%.3f ScoreNorm=%.3f Prob=%.3f Desc=%s",
-            client_ip, url, total_score, s_norm, p_attack, all_descriptions
+            client_ip, url, total_score, s_norm, p_attack, all_descriptions  # Log de detección con métricas
         )
 
         # Registrar el evento de manera cifrada para auditoría
         try:
             record_xss_event({
-                "ts": int(time.time()),
-                "ip": client_ip,
-                "score_raw": total_score,
-                "score_norm": s_norm,
-                "prob": p_attack,
-                "desc": all_descriptions,
-                "url": url,
-                "payload": payload_summary,  # se cifrará en record_xss_event
+                "ts": int(time.time()),  # Timestamp
+                "ip": client_ip,  # IP detectada
+                "score_raw": total_score,  # Puntaje bruto
+                "score_norm": s_norm,  # Puntaje normalizado
+                "prob": p_attack,  # Probabilidad combinada
+                "desc": all_descriptions,  # Descripciones
+                "url": url,  # URL afectada
+                "payload": payload_summary,  # Payload (se cifra dentro de record_xss_event)
             })
         except Exception:
-            logger.exception("failed to record XSS event")
+            logger.exception("failed to record XSS event")  # Log si falla el registro
 
         # Asignar información de ataque al request para uso posterior
         request.xss_attack_info = {
-            "ip": client_ip,
-            "tipos": ["XSS"],
-            "descripcion": all_descriptions,
-            "payload": payload_for_request,
-            "score_raw": total_score,
-            "score_norm": s_norm,
-            "prob": p_attack,
-            "url": url,
+            "ip": client_ip,  # IP del atacante
+            "tipos": ["XSS"],  # Tipo de amenaza
+            "descripcion": all_descriptions,  # Descripciones encontradas
+            "payload": payload_for_request,  # Payload resumido
+            "score_raw": total_score,  # Puntaje bruto
+            "score_norm": s_norm,  # Puntaje normalizado
+            "prob": p_attack,  # Probabilidad
+            "url": url,  # URL
         }
 
         # Políticas de bloqueo (similar a SQLi, pero ajustadas para XSS)
-        if s_norm >= XSS_NORM_THRESHOLDS["HIGH"]:
-            level, timeout = cache_block_ip_with_backoff(client_ip)
-            logger.error(f"[XSSBlock] IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} URL={url}")
-            request.xss_attack_info.update({"blocked": True, "action": "block", "block_timeout": timeout, "block_level": level})
+        if s_norm >= XSS_NORM_THRESHOLDS["HIGH"]:  # Umbral alto -> bloqueo inmediato
+            level, timeout = cache_block_ip_with_backoff(client_ip)  # Incrementa backoff y bloquea
+            logger.error(f"[XSSBlock] IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} URL={url}")  # Log de bloqueo
+            request.xss_attack_info.update({"blocked": True, "action": "block", "block_timeout": timeout, "block_level": level})  # Actualiza info en request
             # Setear flag para bloqueo
-            request.xss_block = True
-            request.xss_block_response = HttpResponseForbidden("Request blocked by XSS defense")
+            request.xss_block = True  # Flag de bloqueo
+            request.xss_block_response = HttpResponseForbidden("Request blocked by XSS defense")  # Respuesta preparada de bloqueo
             return None
-        elif s_norm >= XSS_NORM_THRESHOLDS["MEDIUM"]:
-            logger.warning(f"[XSSAlert] IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} - applying counter/challenge")
-            count = incr_ip_counter(client_ip)
-            request.xss_attack_info.update({"blocked": False, "action": "alert", "counter": count})
-            if count >= XSS_COUNTER_THRESHOLD:
-                level, timeout = cache_block_ip_with_backoff(client_ip)
-                cache.set(f"{XSS_CACHE_COUNTER_KEY_PREFIX}{client_ip}", 0, timeout=XSS_COUNTER_WINDOW)
-                logger.error(f"[XSSAutoBlock] IP={client_ip} reached counter={count} -> blocking for {timeout}s")
-                request.xss_attack_info.update({"blocked": True, "action": "auto_block", "block_timeout": timeout, "block_level": level})
+        elif s_norm >= XSS_NORM_THRESHOLDS["MEDIUM"]:  # Umbral medio -> alertas y counters
+            logger.warning(f"[XSSAlert] IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} - applying counter/challenge")  # Log de alerta
+            count = incr_ip_counter(client_ip)  # Incrementa contador por IP
+            request.xss_attack_info.update({"blocked": False, "action": "alert", "counter": count})  # Actualiza info del request
+            if count >= XSS_COUNTER_THRESHOLD:  # Si contador supera umbral, bloquear
+                level, timeout = cache_block_ip_with_backoff(client_ip)  # Bloqueo con backoff
+                cache.set(f"{XSS_CACHE_COUNTER_KEY_PREFIX}{client_ip}", 0, timeout=XSS_COUNTER_WINDOW)  # Reset del contador
+                logger.error(f"[XSSAutoBlock] IP={client_ip} reached counter={count} -> blocking for {timeout}s")  # Log auto-block
+                request.xss_attack_info.update({"blocked": True, "action": "auto_block", "block_timeout": timeout, "block_level": level})  # Actualiza info
                 # Setear flag para bloqueo
                 request.xss_block = True
-                request.xss_block_response = HttpResponseForbidden("Request blocked by XSS defense (auto block)")
+                request.xss_block_response = HttpResponseForbidden("Request blocked by XSS defense (auto block)")  # Respuesta de bloqueo automática
                 return None
-            if getattr(settings, "XSS_DEFENSE_USE_CHALLENGE", False):
+            if getattr(settings, "XSS_DEFENSE_USE_CHALLENGE", False):  # Si está configurado challenge
                 # Setear flag para challenge
-                request.xss_challenge = True
-                request.xss_challenge_response = HttpResponse("Challenge required", status=403)
-                request.xss_challenge_response["X-XSS-Challenge"] = "captcha"
+                request.xss_challenge = True  # Flag challenge
+                request.xss_challenge_response = HttpResponse("Challenge required", status=403)  # Respuesta challenge
+                request.xss_challenge_response["X-XSS-Challenge"] = "captcha"  # Header indicando challenge
                 return None
             return None
-        elif s_norm >= XSS_NORM_THRESHOLDS["LOW"]:
-            logger.info(f"[XSSMonitor] IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} - monitored")
-            request.xss_attack_info.update({"blocked": False, "action": "monitor"})
+        elif s_norm >= XSS_NORM_THRESHOLDS["LOW"]:  # Umbral bajo -> solo monitoreo
+            logger.info(f"[XSSMonitor] IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} - monitored")  # Log de monitoreo
+            request.xss_attack_info.update({"blocked": False, "action": "monitor"})  # Marca como monitoreado
             return None
-        return None
+        return None  # Default: no acción adicional
 
 
 # =====================================================
