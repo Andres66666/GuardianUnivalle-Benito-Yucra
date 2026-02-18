@@ -94,7 +94,7 @@ ARGON2_CONFIG = getattr(settings, "SQLI_DEFENSE_ARGON2", {
 # HMAC key derivation salt label
 HMAC_LABEL = b"sqlidefense-hmac" # Etiqueta usada para derivar la clave HMAC desde la master key
 AEAD_LABEL = b"sqlidefense-aead" # Etiqueta usada para derivar la clave AEAD desde la master key
-
+HASH_CHOICE = getattr(settings, "SQLI_DEFENSE_HASH", "SHA256").upper()  # SHA256 o SHA3
 # Patrones SQLi con su descripción y peso asociado (0.0 a 1.0)
 SQL_PATTERNS: List[Tuple[re.Pattern, str, float]] = [
     (re.compile(r"\bunion\b\s+(all\s+)?\bselect\b", re.I), "UNION SELECT (exfiltración)", 0.95),
@@ -331,6 +331,41 @@ def get_client_ip(request) -> str: # Extrae la IP real del cliente considerando 
     remote = request.META.get("REMOTE_ADDR", "") # Leer dirección remota
     return remote or "" # Retornar la IP remota (último recurso)
 
+def compute_hash(data: bytes) -> str:
+    logger.info("========== [CRYPTO:SQLI] INICIO HASH ==========")
+    if HASH_CHOICE == "SHA3":
+        alg = "SHA3-256"
+        h = hashes.Hash(hashes.SHA3_256())
+    else:
+        alg = "SHA-256"
+        h = hashes.Hash(hashes.SHA256())
+    logger.info("[CRYPTO:SQLI] Algoritmo seleccionado: %s", alg)
+    logger.info("[CRYPTO:SQLI] Datos de entrada: %s", data.decode(errors="ignore"))
+    h.update(data)
+    digest = base64.b64encode(h.finalize()).decode()
+    logger.info("[CRYPTO:SQLI] Hash generado (Base64): %s", digest)
+    logger.info("========== [CRYPTO:SQLI] FIN HASH ==========")
+    return digest
+def get_attacker_fingerprint(request, payload_summary=None):
+    ua = request.META.get("HTTP_USER_AGENT", "")
+    accept = request.META.get("HTTP_ACCEPT", "")
+    lang = request.META.get("HTTP_ACCEPT_LANGUAGE", "")
+    path = request.path
+
+    raw = json.dumps({
+        "ua": ua[:200],
+        "accept": accept[:100],
+        "lang": lang[:50],
+        "path": path,
+        "payload": payload_summary[:3] if payload_summary else [],
+    }, ensure_ascii=False)
+
+    return compute_hash(raw.encode())
+def is_fingerprint_blocked(fingerprint: str) -> bool:
+    if not fingerprint:
+        return False
+    return bool(cache.get(f"sqli_block_fingerprint:{fingerprint}"))  # Nota: Usa prefijo "xss_" para consistencia, o cambia a "sqli_"
+
 # Normaliza la entrada decodificando URL, HTML entities, limpiando espacios y escapes hex
 def normalize_input(s: str) -> str:
     if not s: # Si la cadena está vacía, retornar cadena vacía
@@ -437,21 +472,20 @@ def redact_and_encrypt_payload(payload_summary: List[Dict[str, Any]], context: b
 
 # Cache helpers
 # incrementa el level de bloqueo para la IP (guardado en cache) y establece bloqueo por tiempo según DEFAULT_BACKOFF_LEVELS. Retorna el nuevo level y timeout aplicado.
-def cache_block_ip_with_backoff(ip: str):
-    if not ip: # Si no hay IP, retornar 0, 0
+def cache_block_ip_with_backoff(ip: str, fingerprint: str = ""):
+    if not ip:
         return 0, 0
-    level_key = f"{CACHE_BLOCK_KEY_PREFIX}{ip}:level" # Clave para el nivel de bloqueo
-     # Obtener nivel actual de bloqueo desde cache
+    level_key = f"{CACHE_BLOCK_KEY_PREFIX}{ip}:level"
     level = cache.get(level_key, 0) or 0
-    level = int(level) + 1 # Incrementar el nivel de bloqueo
-     # Guardar el nuevo nivel de bloqueo en cache (expira en 7 días)
+    level = int(level) + 1
     cache.set(level_key, level, timeout=60 * 60 * 24 * 7)
-    durations = DEFAULT_BACKOFF_LEVELS # Obtener niveles de backoff configurados
-     # Determinar timeout basado en el nivel (acotar al máximo definido)
+    durations = DEFAULT_BACKOFF_LEVELS
     idx = min(level, len(durations) - 1)
-    timeout = durations[idx] # Tiempo de bloqueo en segundos
-    cache.set(f"{CACHE_BLOCK_KEY_PREFIX}{ip}", True, timeout=timeout) # Establecer bloqueo en cache con timeout
-    return level, timeout # Retornar el nuevo nivel y timeout aplicado
+    timeout = durations[idx]
+    cache.set(f"{CACHE_BLOCK_KEY_PREFIX}{ip}", True, timeout=timeout)
+    if fingerprint:  # NUEVO: Bloquea por fingerprint
+        cache.set(f"sqli_block_fingerprint:{fingerprint}", True, timeout=timeout)  # Usa prefijo "sqli_"
+    return level, timeout
 
 #  consulta cache si la IP está actualmente bloqueada (llave sqli_block:<ip>).
 def is_ip_blocked(ip: str) -> bool:
@@ -512,6 +546,15 @@ class SQLIDefenseCryptoMiddleware(MiddlewareMixin):
          # Obtener IP del cliente
         client_ip = get_client_ip(request) # Extraer la IP real del cliente desde el request usando cabeceras de get cliente ip 
 
+        fingerprint = get_attacker_fingerprint(request)
+        if is_fingerprint_blocked(fingerprint):
+            warning_message = (
+                "Acceso denegado. Su fingerprint y actividades han sido registradas y monitoreadas. "
+                "Continuar con estos intentos podría resultar en exposición pública, bloqueos permanentes o acciones legales. "
+                "Recomendamos detenerse inmediatamente para evitar riesgos mayores."
+            )
+            logger.warning(f"[SQLiBlock:Fingerprint] Fingerprint={fingerprint} IP={client_ip} - Intento persistente de acceso bloqueado.")
+            return HttpResponseForbidden(warning_message)
         # Chequear bloqueo persistente  mediante cache verifica si la IP está bloqueada en cache
         if is_ip_blocked(client_ip):
             warning_message = (
@@ -638,17 +681,19 @@ class SQLIDefenseCryptoMiddleware(MiddlewareMixin):
             f"[SQLiDetect] IP={client_ip} Host={host} Score={total_score:.2f} S_norm={s_norm:.3f} P_attack={p_attack:.3f} Desc={all_descriptions} Payload_enc_snippets={json.dumps(encrypted_payload)[:1000]}" # Loggear detección de SQLi con detalles
         )
 
+        fingerprint = get_attacker_fingerprint(request, payload_summary)
+        
         request.sql_attack_info = {
-            "ip": client_ip, # IP del cliente
-            "tipos": ["SQLi"], #  Tipos de ataque detectados
-            "descripcion": all_descriptions, # Descripciones de patrones encontrados
-            "payload": json.dumps(encrypted_payload, ensure_ascii=False)[:2000], # Payload cifrado/resumido
-            "score": round(total_score, 3), # Score total redondeado
-            "s_norm": round(s_norm, 3), # Score normalizado redondeado
-            "p_attack": round(p_attack, 3), # Probabilidad de ataque redondeada
-            "url": request.build_absolute_uri(),    # URL completa del request
-        } # Guardar info de ataque en el request para uso posterior
-
+            "ip": client_ip,
+            "tipos": ["SQLi"],
+            "descripcion": all_descriptions,
+            "payload": json.dumps(encrypted_payload, ensure_ascii=False)[:2000],
+            "score": round(total_score, 3),
+            "s_norm": round(s_norm, 3),
+            "p_attack": round(p_attack, 3),
+            "url": request.build_absolute_uri(),
+            "fingerprint": fingerprint,  # NUEVO
+        }
         # registrar evento cifrado
         try:
             record_detection_event({
@@ -667,7 +712,7 @@ class SQLIDefenseCryptoMiddleware(MiddlewareMixin):
 
         # Políticas de bloqueo: setea flags en lugar de retornar HttpResponseForbidden
         if p_attack >= getattr(settings, "SQLI_DEFENSE_P_ATTACK_BLOCK", 0.97): # Bloqueo basado en probabilidad de ataque
-            level, timeout = cache_block_ip_with_backoff(client_ip) # Bloquear IP con backoff
+            level, timeout = cache_block_ip_with_backoff(client_ip, fingerprint)  # NUEVO: Pasa fingerprint
             logger.error(f"[SQLiBlock:P_attack] IP={client_ip} P={p_attack:.3f} -> level={level} timeout={timeout}s") # Loggear bloqueo por probabilidad
             request.sql_attack_info.update({"blocked": True, "action": "block_p_attack", "block_timeout": timeout, "block_level": level}) # Actualizar info de ataque con detalles de bloqueo
             # Nuevo: setea flag para bloqueo en lugar de retornar
@@ -675,7 +720,7 @@ class SQLIDefenseCryptoMiddleware(MiddlewareMixin):
             request.sql_block_response = HttpResponseForbidden("Request blocked by SQLI defense (probability)")  # Retornar 403 Forbidden
             return None  # No retorna respuesta aquí
         if s_norm >= NORM_THRESHOLDS["HIGH"]: # Bloqueo alto basado en score normalizado
-            level, timeout = cache_block_ip_with_backoff(client_ip) # Bloquear IP con backoff
+            level, timeout = cache_block_ip_with_backoff(client_ip, fingerprint)  # NUEVO
             logger.error(f"[SQLiBlock] IP={client_ip} Score={total_score:.2f} S_norm={s_norm:.3f} URL={request.path}") # Loggear bloqueo por score normalizado alto
             request.sql_attack_info.update({"blocked": True, "action": "block", "block_timeout": timeout, "block_level": level}) # Actualizar info de ataque con detalles de bloqueo
             # Nuevo: setea flag para bloqueo
@@ -688,7 +733,7 @@ class SQLIDefenseCryptoMiddleware(MiddlewareMixin):
              # Actualizar info de ataque con detalles de alerta
             request.sql_attack_info.update({"blocked": False, "action": "alert", "counter": count})
             if count >= COUNTER_THRESHOLD: # Si el contador supera el umbral, aplicar bloqueo
-                level, timeout = cache_block_ip_with_backoff(client_ip) # Bloquear IP con backoff
+                level, timeout = cache_block_ip_with_backoff(client_ip, fingerprint)  
                  # Reiniciar el contador después del bloqueo
                 cache.set(f"{CACHE_COUNTER_KEY_PREFIX}{client_ip}", 0, timeout=COUNTER_WINDOW)
                 logger.error(f"[SQLiAutoBlock] IP={client_ip} reached counter={count} -> blocking for {timeout}s")

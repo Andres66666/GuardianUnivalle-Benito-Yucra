@@ -20,6 +20,8 @@ from cryptography.exceptions import InvalidSignature  # Excepción lanzada cuand
 from argon2.low_level import hash_secret_raw, Type as Argon2Type  # Argon2id (hash_secret_raw) para derivación resistente a fuerza bruta.
 
 
+from django.http import HttpResponseForbidden, HttpResponse 
+
 logger = logging.getLogger("csrfdefense")
 logger.setLevel(logging.INFO)
 if not logger.handlers:
@@ -91,6 +93,9 @@ ARGON2_CONFIG = getattr(settings, "CSRF_DEFENSE_ARGON2", {
 HMAC_LABEL = getattr(settings, "CSRF_HMAC_LABEL", b"csrfdefense-hmac")
 AEAD_LABEL = getattr(settings, "CSRF_AEAD_LABEL", b"csrfdefense-aead")
 HASH_CHOICE = getattr(settings, "CSRF_DEFENSE_HASH", "SHA256").upper()  # SHA256 o SHA3
+CACHE_BLOCK_KEY_PREFIX = "csrf_block:" # Prefijo para claves de bloqueo en caché
+DEFAULT_BACKOFF_LEVELS = getattr(settings, "CSRF_DEFENSE_BACKOFF_LEVELS", [0, 60 * 15, 60 * 60, 60 * 60 * 6, 60 * 60 * 24, 60 * 60 * 24 * 7]) 
+
 
 # ----------------------------
 # Funciones criptográficas (derivación, AEAD, HMAC, hash)
@@ -189,16 +194,46 @@ def verify_hmac(data: bytes, tag: bytes, context: bytes = b"") -> bool:
         return False
 
 def compute_hash(data: bytes) -> str:
-    # Selecciona SHA3-256 si HASH_CHOICE == "SHA3", sino SHA-256
     if HASH_CHOICE == "SHA3":
         h = hashes.Hash(hashes.SHA3_256())
     else:
         h = hashes.Hash(hashes.SHA256())
-    # Alimenta el objeto hash con los datos
     h.update(data)
-    # Finaliza el hash, codifica el digest en Base64 y lo retorna como str UTF-8
     return base64.b64encode(h.finalize()).decode()
 
+def get_attacker_fingerprint(request, payload_summary=None):
+    ua = request.META.get("HTTP_USER_AGENT", "")
+    accept = request.META.get("HTTP_ACCEPT", "")
+    lang = request.META.get("HTTP_ACCEPT_LANGUAGE", "")
+    path = request.path
+
+    raw = json.dumps({
+        "ua": ua[:200],
+        "accept": accept[:100],
+        "lang": lang[:50],
+        "path": path,
+        "payload": payload_summary[:3] if payload_summary else [],
+    }, ensure_ascii=False)
+
+    return compute_hash(raw.encode())
+def is_fingerprint_blocked(fingerprint: str) -> bool:
+    if not fingerprint:
+        return False
+    return bool(cache.get(f"csrf_block_fingerprint:{fingerprint}"))  # Usa prefijo "csrf_"
+def cache_block_ip_with_backoff(ip: str, fingerprint: str = ""):
+    if not ip:
+        return 0, 0
+    level_key = f"{CACHE_BLOCK_KEY_PREFIX}{ip}:level"
+    level = cache.get(level_key, 0) or 0
+    level = int(level) + 1
+    cache.set(level_key, level, timeout=60 * 60 * 24 * 7)
+    durations = DEFAULT_BACKOFF_LEVELS
+    idx = min(level, len(durations) - 1)
+    timeout = durations[idx]
+    cache.set(f"{CACHE_BLOCK_KEY_PREFIX}{ip}", True, timeout=timeout)
+    if fingerprint:  # NUEVO: Bloquea por fingerprint
+        cache.set(f"csrf_block_fingerprint:{fingerprint}", True, timeout=timeout)  # Usa prefijo "csrf_"
+    return level, timeout
 # ----------------------------
 # Funciones para tokens CSRF firmados/cifrados
 # ----------------------------
@@ -494,7 +529,10 @@ def analyze_headers(request) -> List[str]:
     
     # Devolver la lista de issues detectados (vacía si no hay ninguno)
     return issues
-
+def is_ip_blocked(ip: str) -> bool:
+    if not ip: # Si no hay IP, retornar False
+        return False
+    return bool(cache.get(f"{CACHE_BLOCK_KEY_PREFIX}{ip}"))
 
 class CSRFDefenseMiddleware(MiddlewareMixin):
     # Middleware para detectar señales de ataques CSRF en requests state-changing.
@@ -524,6 +562,28 @@ class CSRFDefenseMiddleware(MiddlewareMixin):
         method = (request.method or "").upper()
         if method not in STATE_CHANGING_METHODS:
             return None
+
+        # NUEVO: Calcula fingerprint básico y chequea bloqueo
+        fingerprint = get_attacker_fingerprint(request)
+        if is_fingerprint_blocked(fingerprint):
+            warning_message = (
+                "Acceso denegado. Su fingerprint y actividades han sido registradas y monitoreadas. "
+                "Continuar con estos intentos podría resultar en exposición pública, bloqueos permanentes o acciones legales. "
+                "Recomendamos detenerse inmediatamente para evitar riesgos mayores."
+            )
+            logger.warning(f"[CSRFBlock:Fingerprint] Fingerprint={fingerprint} IP={client_ip} - Intento persistente de acceso bloqueado.")
+            return HttpResponseForbidden(warning_message)
+
+        # Chequeo de bloqueo por IP (igual, si aplica)
+        # Nota: CSRF no tiene bloqueo directo como XSS/SQLi, pero lo mantenemos para consistencia
+        if is_ip_blocked(client_ip):
+            warning_message = (
+                "Acceso denegado. Su dirección IP y actividades han sido registradas y monitoreadas. "
+                "Continuar con estos intentos podría resultar en exposición pública, bloqueos permanentes o acciones legales. "
+                "Recomendamos detenerse inmediatamente para evitar riesgos mayores."
+            )
+            logger.warning(f"[CSRFBlock:IP] IP={client_ip} - Intento persistente de acceso bloqueado.")
+            return HttpResponseForbidden(warning_message)
 
         # Inicializar contenedor de descripciones de señales y extraer datos básicos
         descripcion: List[str] = []
@@ -590,7 +650,6 @@ class CSRFDefenseMiddleware(MiddlewareMixin):
         if payload_score > 0:
             descripcion.append(f"Payload sospechoso detectado (score total: {payload_score})")
 
-
         # 8) Análisis de query string (se añade su score al payload_score si hay detección)
         qs_score = analyze_query_string(request)
         if qs_score > 0:
@@ -613,6 +672,9 @@ class CSRFDefenseMiddleware(MiddlewareMixin):
                 url = f"{request.META.get('HTTP_HOST', 'unknown')}{request.path}"
                 logger.warning(f"[CSRFDefense] URL build_absolute_uri falló, usando fallback: {url}")
             
+            # NUEVO: Recalcula fingerprint con payload_summary
+            fingerprint = get_attacker_fingerprint(request, payload_summary)
+
             # Adjuntar información de ataque al objeto request para uso posterior (views/logs)
             request.csrf_attack_info = {
                 "ip": client_ip,
@@ -622,6 +684,7 @@ class CSRFDefenseMiddleware(MiddlewareMixin):
                 "payload": json.dumps(payload_summary, ensure_ascii=False)[:1000] if payload_summary else json.dumps({"full_payload": full_payload[:500]}, ensure_ascii=False),
                 "score": s_csrf,
                 "url": url,
+                "fingerprint": fingerprint,  # NUEVO: Incluye fingerprint
             }
             # Loguear advertencia con detalles
             logger.warning(

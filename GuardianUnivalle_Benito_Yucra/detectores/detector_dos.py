@@ -15,6 +15,9 @@ from django.http import HttpResponseForbidden  # Respuesta usada para bloquear p
 import requests  # Usado para obtener listas negras externas (scraping).
 import re  # Expresiones regulares (extraer IPs/CIDR).
 from ipaddress import ip_address, IPv4Address, IPv4Network  # Operaciones sobre IPs/CIDR.
+from django.core.cache import cache  # Caché de Django para almacenar eventos/contadores.
+import base64  # Codificar/decodificar en Base64.
+from cryptography.hazmat.primitives import hashes, hmac as crypto_hmac  # Hashes (SHA256/SHA3) y HMAC para firmas.
 
 # =====================================================
 # === CONFIGURACIÓN GLOBAL Y LOGGER ===
@@ -25,7 +28,7 @@ if not logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     logger.addHandler(handler)
-
+HASH_CHOICE = getattr(settings, "CSRF_DEFENSE_HASH", "SHA256").upper()  # SHA256 o SHA3
 # =====================================================
 # === CONFIGURACIÓN DE INTELIGENCIA DE AMENAZAS (THREAT INTEL) ===
 # =====================================================
@@ -253,7 +256,49 @@ def analizar_headers_avanzado(user_agent: str, referer: str) -> List[str]:
         sospechas.append("Referer indicando abuso")
 
     return sospechas
+def compute_hash(data: bytes) -> str:
+    if HASH_CHOICE == "SHA3":
+        h = hashes.Hash(hashes.SHA3_256())
+    else:
+        h = hashes.Hash(hashes.SHA256())
+    h.update(data)
+    return base64.b64encode(h.finalize()).decode()
 
+def get_attacker_fingerprint(request, payload_summary=None):
+    ua = request.META.get("HTTP_USER_AGENT", "")
+    accept = request.META.get("HTTP_ACCEPT", "")
+    lang = request.META.get("HTTP_ACCEPT_LANGUAGE", "")
+    path = request.path
+
+    raw = json.dumps({
+        "ua": ua[:200],
+        "accept": accept[:100],
+        "lang": lang[:50],
+        "path": path,
+        "payload": payload_summary[:3] if payload_summary else [],
+    }, ensure_ascii=False)
+
+    return compute_hash(raw.encode())
+
+def is_fingerprint_blocked(fingerprint: str) -> bool:
+    if not fingerprint:
+        return False
+    return bool(cache.get(f"dos_block_fingerprint:{fingerprint}"))  # Prefijo "dos_" para consistencia
+
+def cache_block_ip_with_backoff(ip: str, fingerprint: str = ""):
+    if not ip:
+        return 0, 0
+    level_key = f"dos_block:{ip}:level"  # Prefijo "dos_" para consistencia
+    level = cache.get(level_key, 0) or 0
+    level = int(level) + 1
+    cache.set(level_key, level, timeout=60 * 60 * 24 * 7)
+    durations = [0, 60 * 15, 60 * 60, 60 * 60 * 6, 60 * 60 * 24, 60 * 60 * 24 * 7]  # DEFAULT_BACKOFF_LEVELS para DoS
+    idx = min(level, len(durations) - 1)
+    timeout = durations[idx]
+    cache.set(f"dos_block:{ip}", True, timeout=timeout)  # Prefijo "dos_"
+    if fingerprint:  # NUEVO: Bloquea por fingerprint
+        cache.set(f"dos_block_fingerprint:{fingerprint}", True, timeout=timeout)  # Prefijo "dos_"
+    return level, timeout
 # =====================================================
 # === MIDDLEWARE PRINCIPAL DE DEFENSA DoS ===
 # =====================================================
@@ -270,6 +315,17 @@ class DOSDefenseMiddleware(MiddlewareMixin):
         limpiar_registro_global()
 
         client_ip = get_client_ip(request)  # Obtener IP del cliente.
+
+        # NUEVO: Calcula fingerprint básico y chequea bloqueo
+        fingerprint = get_attacker_fingerprint(request)
+        if is_fingerprint_blocked(fingerprint):
+            warning_message = (
+                "Acceso denegado. Su fingerprint y actividades han sido registradas y monitoreadas. "
+                "Continuar con estos intentos podría resultar en exposición pública, bloqueos permanentes o acciones legales. "
+                "Recomendamos detenerse inmediatamente para evitar riesgos mayores."
+            )
+            logger.warning(f"[DOSBlock:Fingerprint] Fingerprint={fingerprint} IP={client_ip} - Intento persistente de acceso bloqueado.")
+            return HttpResponseForbidden(warning_message)
 
         # 1. BLOQUEOS Y EXCEPCIONES PREVIAS
         # Si la IP está en la lista de confianza, no procesar.
@@ -332,6 +388,10 @@ class DOSDefenseMiddleware(MiddlewareMixin):
             descripcion.append(f"Ruta: {path}")
 
             logger.warning("Tráfico Sospechoso desde IP %s: %s", client_ip, " ; ".join(descripcion))
+            # NUEVO: Recalcula fingerprint con payload_summary (simulado con datos de headers/path)
+            payload_summary = [{"field": "user_agent", "snippet": user_agent[:300], "score": score_headers}, {"field": "path", "snippet": path, "score": score_endpoints}]
+            fingerprint = get_attacker_fingerprint(request, payload_summary)
+
             # Anexar info al request para que otros middlewares / views puedan actuar.
             request.dos_attack_info = {
                 "ip": client_ip,
@@ -339,6 +399,7 @@ class DOSDefenseMiddleware(MiddlewareMixin):
                 "descripcion": descripcion,
                 "payload": json.dumps({"user_agent": user_agent, "referer": referer, "path": path}),
                 "score": S_total,
+                "fingerprint": fingerprint,  # NUEVO: Incluye fingerprint
             }
         # No interrumpir el flujo normal si no se bloquea.
         return None

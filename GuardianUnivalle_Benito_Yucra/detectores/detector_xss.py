@@ -1,3 +1,6 @@
+#E:\EcuacionPotosi\GuardianUnivalle-Benito-Yucra\GuardianUnivalle_Benito_Yucra\detectores\detector_xss.py
+# hasta aqui funciona correctamente
+
 # xss_defense_crypto.py
 # GuardianUnivalle_Benito_Yucra/detectores/xss_defense_crypto.py
 # Middleware robusto para detección y mitigación de XSS con componentes criptográficos integrados
@@ -142,82 +145,186 @@ SENSITIVE_DISCOUNT = 0.5
 # Funciones criptográficas (derivación, AEAD, HMAC, hash)
 # ----------------------------
 # deriva una clave simétrica de 32 bytes a partir de MASTER_KEY usando Argon2 y HKDF (con fallback a HKDF directo).
-def derive_key(label: bytes, context: bytes = b"") -> bytes:   # generacion de claves  
-    salt = (label + context)[:16].ljust(16, b"\0") 
+def derive_key(label: bytes, context: bytes = b"") -> bytes:
+    logger.info("========== [CRYPTO:XSS] INICIO DERIVACIÓN DE CLAVE ==========")
+    logger.info("[CRYPTO:XSS] Tipo de clave: CLAVE SIMÉTRICA")
+    logger.info("[CRYPTO:XSS] Algoritmos: Argon2id + HKDF-SHA256")
+    logger.info("[CRYPTO:XSS] Propósito (label): %s", label.decode(errors="ignore"))
+    logger.info("[CRYPTO:XSS] Contexto asociado: %s", context.decode(errors="ignore"))
+
+    salt = (label + context)[:16].ljust(16, b"\0")
+    logger.info("[CRYPTO:XSS] Salt generado (Base64): %s", base64.b64encode(salt).decode())
+
     try:
-        raw = hash_secret_raw(secret=MASTER_KEY if isinstance(MASTER_KEY, (bytes, bytearray)) else MASTER_KEY.encode(),
-                              salt=salt,
-                              time_cost=ARGON2_CONFIG["time_cost"],
-                              memory_cost=ARGON2_CONFIG["memory_cost"],
-                              parallelism=ARGON2_CONFIG["parallelism"],
-                              hash_len=ARGON2_CONFIG["hash_len"],
-                              type=ARGON2_CONFIG["type"])
-        hk = HKDF(algorithm=hashes.SHA256(), length=32, salt=salt, info=label + context)
-        return hk.derive(raw)
-    except Exception:
-        hk = HKDF(algorithm=hashes.SHA256(), length=32, salt=salt, info=label + context)
-        return hk.derive(MASTER_KEY if isinstance(MASTER_KEY, bytes) else MASTER_KEY.encode())
+        logger.info("[CRYPTO:XSS] Derivando clave base usando Argon2id...")
+        raw = hash_secret_raw(
+            secret=MASTER_KEY if isinstance(MASTER_KEY, (bytes, bytearray)) else MASTER_KEY.encode(),
+            salt=salt,
+            time_cost=ARGON2_CONFIG["time_cost"],
+            memory_cost=ARGON2_CONFIG["memory_cost"],
+            parallelism=ARGON2_CONFIG["parallelism"],
+            hash_len=ARGON2_CONFIG["hash_len"],
+            type=ARGON2_CONFIG["type"]
+        )
+
+        logger.info("[CRYPTO:XSS] Clave intermedia Argon2id generada (Base64): %s",
+                    base64.b64encode(raw).decode())
+
+        logger.info("[CRYPTO:XSS] Refinando clave final usando HKDF-SHA256...")
+        hk = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            info=label + context
+        )
+        key = hk.derive(raw)
+
+        logger.info("[CRYPTO:XSS]  Clave simétrica final creada (32 bytes, Base64): %s",
+                    base64.b64encode(key).decode())
+        logger.info("========== [CRYPTO:XSS] FIN DERIVACIÓN DE CLAVE ==========")
+        return key
+
+    except Exception as e:
+        logger.error("[CRYPTO:XSS]  Falló Argon2id, usando HKDF directo: %s", e)
+
+        hk = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            info=label + context
+        )
+        key = hk.derive(MASTER_KEY if isinstance(MASTER_KEY, bytes) else MASTER_KEY.encode())
+
+        logger.info("[CRYPTO:XSS]  Clave simétrica creada con HKDF directo (Base64): %s",
+                    base64.b64encode(key).decode())
+        logger.info("========== [CRYPTO:XSS] FIN DERIVACIÓN DE CLAVE ==========")
+        return key
+
 
 # ciframos la clave secreta
 # cifra plaintext con AES-GCM o ChaCha20-Poly1305 y devuelve dict {alg, nonce, ciphertext}.
-def aead_encrypt(plaintext: bytes, aad: bytes = b"", context: bytes = b"") -> Dict[str, bytes]: 
+def aead_encrypt(plaintext: bytes, aad: bytes = b"", context: bytes = b"") -> Dict[str, bytes]:
+    logger.info("========== [CRYPTO:XSS] INICIO CIFRADO AEAD ==========")
+    logger.info("[CRYPTO:XSS] Tipo: CIFRADO SIMÉTRICO AUTENTICADO")
+    logger.info("[CRYPTO:XSS] Texto plano a cifrar: %s", plaintext.decode(errors="ignore"))
+
     key = derive_key(AEAD_LABEL, context)
+    nonce = os.urandom(12)
+
+    logger.info("[CRYPTO:XSS] Nonce generado (Base64): %s", base64.b64encode(nonce).decode())
+
     if AEAD_CHOICE == "CHACHA20":
+        logger.info("[CRYPTO:XSS] Algoritmo seleccionado: ChaCha20-Poly1305")
         aead = ChaCha20Poly1305(key)
-        nonce = os.urandom(12)
-        ct = aead.encrypt(nonce, plaintext, aad)
-        return {"alg": "CHACHA20-POLY1305", "nonce": nonce, "ciphertext": ct}
+        ciphertext = aead.encrypt(nonce, plaintext, aad)
+        alg = "CHACHA20-POLY1305"
     else:
+        logger.info("[CRYPTO:XSS] Algoritmo seleccionado: AES-256-GCM")
         aead = AESGCM(key)
-        nonce = os.urandom(12)
-        ct = aead.encrypt(nonce, plaintext, aad)
-        return {"alg": "AES-GCM", "nonce": nonce, "ciphertext": ct}
-    
+        ciphertext = aead.encrypt(nonce, plaintext, aad)
+        alg = "AES-GCM"
+
+    logger.info("[CRYPTO:XSS] Texto cifrado (Base64): %s",
+                base64.b64encode(ciphertext).decode())
+    logger.info("========== [CRYPTO:XSS] FIN CIFRADO AEAD ==========")
+
+    return {
+        "alg": alg,
+        "nonce": nonce,
+        "ciphertext": ciphertext
+    }
+
+
 # funcion para desifrado 
 # descifra y verifica un payload AEAD (AES-GCM/ChaCha20) y devuelve los bytes de plaintext.
-def aead_decrypt(payload: Dict[str, bytes], aad: bytes = b"", context: bytes = b"") -> bytes: 
-    key = derive_key(AEAD_LABEL, context)
-    alg = payload.get("alg", "AES-GCM")
+def aead_decrypt(payload: Dict[str, bytes], aad: bytes = b"", context: bytes = b"") -> bytes:
+    logger.info("========== [CRYPTO:XSS] INICIO DESCIFRADO AEAD ==========")
+
+    alg = payload.get("alg")
     nonce = payload.get("nonce")
-    ct = payload.get("ciphertext")
-    if not nonce or not ct:
-        raise ValueError("invalid payload for AEAD decrypt")
+    ciphertext = payload.get("ciphertext")
+
+    logger.info("[CRYPTO:XSS] Algoritmo: %s", alg)
+    logger.info("[CRYPTO:XSS] Nonce (Base64): %s", base64.b64encode(nonce).decode())
+    logger.info("[CRYPTO:XSS] Ciphertext (Base64): %s", base64.b64encode(ciphertext).decode())
+
+    key = derive_key(AEAD_LABEL, context)
+
     if alg.startswith("CHACHA20"):
         aead = ChaCha20Poly1305(key)
-        return aead.decrypt(nonce, ct, aad)
     else:
         aead = AESGCM(key)
-        return aead.decrypt(nonce, ct, aad)
-    
+
+    plaintext = aead.decrypt(nonce, ciphertext, aad)
+
+    logger.info("[CRYPTO:XSS]  Texto descifrado correctamente: %s",
+                plaintext.decode(errors="ignore"))
+    logger.info("========== [CRYPTO:XSS] FIN DESCIFRADO AEAD ==========")
+
+    return plaintext
+
 # veficacion de la fima con HMAC
 # calcula un HMAC-SHA256 sobre unos datos usando una clave derivada.
 def compute_hmac(data: bytes, context: bytes = b"") -> bytes:
+    logger.info("========== [CRYPTO:XSS] INICIO FIRMA HMAC ==========")
+    logger.info("[CRYPTO:XSS] Algoritmo: HMAC-SHA256")
+    logger.info("[CRYPTO:XSS] Datos a firmar: %s", data.decode(errors="ignore"))
+
     key = derive_key(HMAC_LABEL, context)
     h = crypto_hmac.HMAC(key, hashes.SHA256())
     h.update(data)
-    return h.finalize()
+    tag = h.finalize()
+
+    logger.info("[CRYPTO:XSS] Firma HMAC generada (Base64): %s",
+                base64.b64encode(tag).decode())
+    logger.info("========== [CRYPTO:XSS] FIN FIRMA HMAC ==========")
+    return tag
+
+
 
 # La función verify_hmac comprueba si un tag HMAC (firma) es válido para unos datos dados usando una clave derivada del 
 # sistema. Devuelve True si la verificación pasa y False si la firma no coincide. 
-def verify_hmac(data: bytes, tag: bytes, context: bytes = b"") -> bool: 
+def verify_hmac(data: bytes, tag: bytes, context: bytes = b"") -> bool:
+    logger.info("========== [CRYPTO:XSS] INICIO VERIFICACIÓN HMAC ==========")
+
     key = derive_key(HMAC_LABEL, context)
     h = crypto_hmac.HMAC(key, hashes.SHA256())
     h.update(data)
+
     try:
         h.verify(tag)
+        logger.info("[CRYPTO:XSS]  Firma HMAC VÁLIDA")
+        logger.info("========== [CRYPTO:XSS] FIN VERIFICACIÓN HMAC ==========")
         return True
     except InvalidSignature:
+        logger.warning("[CRYPTO:XSS]  Firma HMAC INVÁLIDA")
+        logger.info("========== [CRYPTO:XSS] FIN VERIFICACIÓN HMAC ==========")
         return False
+
 
 # La función compute_hash toma bytes como entrada, elige entre SHA3‑256 o SHA‑256 según la constante global HASH_CHOICE, 
 # calcula el resumen con la API Hash de cryptography, codifica el resultado en Base64 y lo devuelve como cadena UTF‑8.
-def compute_hash(data: bytes) -> str: 
+def compute_hash(data: bytes) -> str:
+    logger.info("========== [CRYPTO:XSS] INICIO HASH ==========")
+
     if HASH_CHOICE == "SHA3":
-        h = hashes.Hash(hashes.SHA3_256()) 
+        alg = "SHA3-256"
+        h = hashes.Hash(hashes.SHA3_256())
     else:
+        alg = "SHA-256"
         h = hashes.Hash(hashes.SHA256())
+
+    logger.info("[CRYPTO:XSS] Algoritmo seleccionado: %s", alg)
+    logger.info("[CRYPTO:XSS] Datos de entrada: %s", data.decode(errors="ignore"))
+
     h.update(data)
-    return base64.b64encode(h.finalize()).decode()
+    digest = base64.b64encode(h.finalize()).decode()
+
+    logger.info("[CRYPTO:XSS] Hash generado (Base64): %s", digest)
+    logger.info("========== [CRYPTO:XSS] FIN HASH ==========")
+    return digest
+
+
 
 # ----------------------------
 # Función de saturación
@@ -261,6 +368,25 @@ def get_client_ip(request) -> str:
         if v and _is_valid_ip(v):
             return v
     return request.META.get("REMOTE_ADDR") or ""
+def get_attacker_fingerprint(request, payload_summary=None):
+    ua = request.META.get("HTTP_USER_AGENT", "")
+    accept = request.META.get("HTTP_ACCEPT", "")
+    lang = request.META.get("HTTP_ACCEPT_LANGUAGE", "")
+    path = request.path
+
+    raw = json.dumps({
+        "ua": ua[:200],
+        "accept": accept[:100],
+        "lang": lang[:50],
+        "path": path,
+        "payload": payload_summary[:3] if payload_summary else [],  # NUEVO: payload opcional
+    }, ensure_ascii=False)
+
+    return compute_hash(raw.encode())
+def is_fingerprint_blocked(fingerprint: str) -> bool:
+    if not fingerprint:
+        return False
+    return bool(cache.get(f"xss_block_fingerprint:{fingerprint}"))
 
 # ----------------------------
 # Extraer payload
@@ -342,23 +468,24 @@ def combine_probs(qs: List[float]) -> float:
 # ----------------------------
 # firma un valor (HMAC-SHA256) y devuelve "valor.tag_base64".
 def sign_cookie_value(value: str, context: bytes = b"") -> str:
-    """Firma un valor de cookie con HMAC-SHA256 para evitar alteraciones por XSS."""  # Docstring: propósito de la función
-    data = value.encode("utf-8")  # Codifica el valor a bytes UTF-8
-    tag = compute_hmac(data, context)  # Calcula HMAC sobre los datos
-    return f"{value}.{base64.b64encode(tag).decode()}"  # Retorna valor.sello en base64
+    logger.info("[XSS] Signing cookie value=%s", value)
+    tag = compute_hmac(value.encode(), context)
+    signed = f"{value}.{base64.b64encode(tag).decode()}"
+    logger.info("[XSS] Signed cookie=%s", signed)
+    return signed
+
 
 # verifica la firma de una cookie y retorna el valor original o lanza ValueError.
 def verify_cookie_signature(signed_value: str, context: bytes = b"") -> str:
-    """Verifica la firma de una cookie y retorna el valor original si es válido."""  # Docstring
-    try:
-        value, tag_b64 = signed_value.rsplit(".", 1)  # Separa valor y tag (último punto)
-        tag = base64.b64decode(tag_b64)  # Decodifica tag base64
-        if verify_hmac(value.encode("utf-8"), tag, context):  # Verifica HMAC
-            return value  # Retorna valor si firma válida
-        else:
-            raise ValueError("Invalid signature")  # Lanza error si firma inválida
-    except Exception:
-        raise ValueError("Invalid signed cookie")  # Normaliza excepción para caller
+    logger.info("[XSS] Verifying signed cookie=%s", signed_value)
+    value, tag_b64 = signed_value.rsplit(".", 1)
+    tag = base64.b64decode(tag_b64)
+    if verify_hmac(value.encode(), tag, context):
+        logger.info("[XSS] Cookie signature VALID")
+        return value
+    logger.error("[XSS] Cookie signature INVALID")
+    raise ValueError("Invalid signed cookie")
+
     
 # cifra un valor de cookie con AEAD y devuelve su representación serializada en Base64.
 def encrypt_cookie_value(value: str, context: bytes = b"") -> str:
@@ -380,18 +507,20 @@ def decrypt_cookie_value(encrypted_value: str, context: bytes = b"") -> str:
 # Funciones de cache para bloqueo (similar a SQLi, pero con prefijo XSS_)
 # ----------------------------
 # incrementa el nivel de backoff para una IP y la marca como bloqueada en cache con timeout
-def cache_block_ip_with_backoff(ip: str):
-    if not ip:  # Si no hay IP, no hace nada
+def cache_block_ip_with_backoff(ip: str, fingerprint: str = ""):
+    if not ip:
         return 0, 0
-    level_key = f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}:level"  # Clave para nivel de backoff
-    level = cache.get(level_key, 0) or 0  # Lee nivel actual o 0
-    level = int(level) + 1  # Incrementa nivel
-    cache.set(level_key, level, timeout=60 * 60 * 24 * 7)  # Guarda nivel con TTL semanal
-    durations = XSS_DEFAULT_BACKOFF_LEVELS  # Niveles de backoff configurados
-    idx = min(level, len(durations) - 1)  # Índice seguro en la lista de duraciones
-    timeout = durations[idx]  # Tiempo de bloqueo elegido
-    cache.set(f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}", True, timeout=timeout)  # Marca IP bloqueada en cache
-    return level, timeout  # Retorna nivel y timeout aplicados
+    level_key = f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}:level"
+    level = cache.get(level_key, 0) or 0
+    level = int(level) + 1
+    cache.set(level_key, level, timeout=60 * 60 * 24 * 7)
+    durations = XSS_DEFAULT_BACKOFF_LEVELS
+    idx = min(level, len(durations) - 1)
+    timeout = durations[idx]
+    cache.set(f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}", True, timeout=timeout)
+    if fingerprint:  # NUEVO: Bloquea también por fingerprint
+        cache.set(f"xss_block_fingerprint:{fingerprint}", True, timeout=timeout)
+    return level, timeout
 
 # comprueba en cache si una IP está bloqueada.
 def is_ip_blocked(ip: str) -> bool:
@@ -417,29 +546,32 @@ def incr_ip_counter(ip: str) -> int:
 # Registro cifrado de eventos (similar a SQLi para asegurar registro)
 # ----------------------------
 # registra un evento XSS cifrando el payload si existe y almacenando el evento en cache.
-def record_xss_event(event: dict) -> None: 
-    try:
-        ts = int(time.time())  # Timestamp del evento
-        # cifrar payload si existe
-        if "payload" in event and event["payload"]:
-            try:
-                ctx = f"{event.get('ip','')}-{ts}".encode()  # Contexto único para cifrado/hmac
-                enc = aead_encrypt(json.dumps(event["payload"], ensure_ascii=False).encode("utf-8"), context=ctx)  # Cifra payload
-                htag = compute_hmac(enc["ciphertext"], context=ctx)  # Calcula HMAC sobre ciphertext
-                event["_payload_encrypted"] = {  # Inserta estructura cifrada en evento
-                    "alg": enc["alg"],  # Algoritmo AEAD usado
-                    "nonce": base64.b64encode(enc["nonce"]).decode(),  # Nonce en base64
-                    "ciphertext": base64.b64encode(enc["ciphertext"]).decode(),  # Ciphertext en base64
-                    "hmac": base64.b64encode(htag).decode(),  # HMAC en base64
-                }
-                del event["payload"]  # Elimina plaintext para no almacenarlo
-            except Exception:
-                # si falla, simplemente no incluimos payload
-                event.pop("payload", None)  # Elimina payload si quedó
-        key = f"xss_event:{ts}:{event.get('ip', '')}"  # Clave para almacenar evento en cache
-        cache.set(key, json.dumps(event, ensure_ascii=False), timeout=60 * 60 * 24)  # Guarda evento serializado por 1 día
-    except Exception:
-        logger.exception("record_xss_event failed")  # Log de excepción si falla registro
+def record_xss_event(event: dict) -> None:
+    logger.warning("[XSS] Recording event for IP=%s", event.get("ip"))
+
+    ts = int(time.time())
+    ctx = f"{event.get('ip','')}-{ts}".encode()
+
+    if "payload" in event and event["payload"]:
+        logger.info("[XSS] Encrypting payload for audit")
+        enc = aead_encrypt(json.dumps(event["payload"]).encode(), context=ctx)
+        htag = compute_hmac(enc["ciphertext"], context=ctx)
+
+        logger.info("[XSS] Payload encrypted + HMAC generated")
+
+        event["_payload_encrypted"] = {
+            "alg": enc["alg"],
+            "nonce": base64.b64encode(enc["nonce"]).decode(),
+            "ciphertext": base64.b64encode(enc["ciphertext"]).decode(),
+            "hmac": base64.b64encode(htag).decode(),
+        }
+        event.pop("payload", None)
+
+    cache.set(
+        f"xss_event:{ts}:{event.get('ip','')}",
+        json.dumps(event, ensure_ascii=False),
+        timeout=60 * 60 * 24
+    )
 
 # ----------------------------
 # Middleware XSS con cripto integrado (ajustado para registro similar a SQLi y chequeo de bloqueo inicial)
@@ -449,6 +581,15 @@ class XSSDefenseCryptoMiddleware(MiddlewareMixin):
     def process_request(self, request):
         client_ip = get_client_ip(request)  # Obtiene IP cliente desde request
 
+        fingerprint = get_attacker_fingerprint(request)  # Sin payload_summary
+        if is_fingerprint_blocked(fingerprint):
+            warning_message = (
+                "Acceso denegado. Su fingerprint y actividades han sido registradas y monitoreadas. "
+                "Continuar con estos intentos podría resultar en exposición pública, bloqueos permanentes o acciones legales. "
+                "Recomendamos detenerse inmediatamente para evitar riesgos mayores."
+            )
+            logger.warning(f"[XSSBlock:Fingerprint] Fingerprint={fingerprint} IP={client_ip} - Intento persistente de acceso bloqueado.")
+            return HttpResponseForbidden(warning_message)
         # Chequear bloqueo inicial 
         if is_ip_blocked(client_ip):  # Si IP está bloqueada persistentemente
             warning_message = (  # Mensaje de advertencia para el cliente bloqueado
@@ -536,35 +677,38 @@ class XSSDefenseCryptoMiddleware(MiddlewareMixin):
         except Exception:
             logger.exception("failed to record XSS event")  # Log si falla el registro
 
+        fingerprint = get_attacker_fingerprint(request, payload_summary)
         # Asignar información de ataque al request para uso posterior
+        # Asigna fingerprint al request
         request.xss_attack_info = {
-            "ip": client_ip,  # IP del atacante
-            "tipos": ["XSS"],  # Tipo de amenaza
-            "descripcion": all_descriptions,  # Descripciones encontradas
-            "payload": payload_for_request,  # Payload resumido
-            "score_raw": total_score,  # Puntaje bruto
-            "score_norm": s_norm,  # Puntaje normalizado
-            "prob": p_attack,  # Probabilidad
-            "url": url,  # URL
+            "ip": client_ip,
+            "tipos": ["XSS"],
+            "descripcion": all_descriptions,
+            "payload": payload_for_request,
+            "score_raw": total_score,
+            "score_norm": s_norm,
+            "prob": p_attack,
+            "url": url,
+            "fingerprint": fingerprint,  # NUEVO: Incluye fingerprint
         }
-
         # Políticas de bloqueo (similar a SQLi, pero ajustadas para XSS)
-        if s_norm >= XSS_NORM_THRESHOLDS["HIGH"]:  # Umbral alto -> bloqueo inmediato
-            level, timeout = cache_block_ip_with_backoff(client_ip)  # Incrementa backoff y bloquea
-            logger.error(f"[XSSBlock] IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} URL={url}")  # Log de bloqueo
-            request.xss_attack_info.update({"blocked": True, "action": "block", "block_timeout": timeout, "block_level": level})  # Actualiza info en request
-            # Setear flag para bloqueo
-            request.xss_block = True  # Flag de bloqueo
-            request.xss_block_response = HttpResponseForbidden("Request blocked by XSS defense")  # Respuesta preparada de bloqueo
+        if s_norm >= XSS_NORM_THRESHOLDS["HIGH"]:
+            level, timeout = cache_block_ip_with_backoff(client_ip, fingerprint)  # NUEVO: Pasa fingerprint
+            logger.error(f"[XSSBlock] Fingerprint={fingerprint} IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} URL={url}")
+            request.xss_attack_info.update({"blocked": True, "action": "block", "block_timeout": timeout, "block_level": level})
+            request.xss_block = True
+            request.xss_block_response = HttpResponseForbidden("Request blocked by XSS defense")
             return None
         elif s_norm >= XSS_NORM_THRESHOLDS["MEDIUM"]:  # Umbral medio -> alertas y counters
             logger.warning(f"[XSSAlert] IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} - applying counter/challenge")  # Log de alerta
             count = incr_ip_counter(client_ip)  # Incrementa contador por IP
             request.xss_attack_info.update({"blocked": False, "action": "alert", "counter": count})  # Actualiza info del request
+
             if count >= XSS_COUNTER_THRESHOLD:  # Si contador supera umbral, bloquear
-                level, timeout = cache_block_ip_with_backoff(client_ip)  # Bloqueo con backoff
+                level, timeout = cache_block_ip_with_backoff(client_ip, fingerprint)  # Bloqueo con backoff
                 cache.set(f"{XSS_CACHE_COUNTER_KEY_PREFIX}{client_ip}", 0, timeout=XSS_COUNTER_WINDOW)  # Reset del contador
-                logger.error(f"[XSSAutoBlock] IP={client_ip} reached counter={count} -> blocking for {timeout}s")  # Log auto-block
+                
+                logger.error(f"[XSSAutoBlock] Fingerprint={fingerprint} IP={client_ip} reached counter={count} -> blocking for {timeout}s")  # Log auto-block
                 request.xss_attack_info.update({"blocked": True, "action": "auto_block", "block_timeout": timeout, "block_level": level})  # Actualiza info
                 # Setear flag para bloqueo
                 request.xss_block = True
