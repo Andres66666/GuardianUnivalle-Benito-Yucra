@@ -1,405 +1,306 @@
-# Middleware y utilidades para detección, registro y mitigación de ataques DoS / scraping.
-# - Carga listas negras externas (IPs/CIDR) para inteligencia de amenazas.
-# - Mantiene registros en memoria por IP (ventana deslizante) y calcula scores.
-# - Aplica bloqueos temporales y genera eventos de auditoría.
-# - Se integra como middleware Django (DOSDefenseMiddleware).
-from __future__ import annotations  # Habilita anotaciones post‑ponibles para tipado.
-import time  # Funciones relacionadas con tiempo (timestamps).
-import logging  # Registro de eventos.
-import json  # Serialización JSON para logs/payloads.
-from collections import deque  # Estructura FIFO para ventanas de tiempo.
-from typing import Dict, List, Set  # Tipos para anotaciones.
-from django.conf import settings  # Acceso a settings de Django.
-from django.utils.deprecation import MiddlewareMixin  # Base para middlewares compatibles.
-from django.http import HttpResponseForbidden  # Respuesta usada para bloquear peticiones.
-import requests  # Usado para obtener listas negras externas (scraping).
-import re  # Expresiones regulares (extraer IPs/CIDR).
-from ipaddress import ip_address, IPv4Address, IPv4Network  # Operaciones sobre IPs/CIDR.
-from django.core.cache import cache  # Caché de Django para almacenar eventos/contadores.
-import base64  # Codificar/decodificar en Base64.
-from cryptography.hazmat.primitives import hashes, hmac as crypto_hmac  # Hashes (SHA256/SHA3) y HMAC para firmas.
+import time
+import json
+import logging
+from typing import Dict, List, Tuple, Optional
 
-# =====================================================
-# === CONFIGURACIÓN GLOBAL Y LOGGER ===
-# =====================================================
-logger = logging.getLogger("dosdefense")  # Logger específico para este módulo.
+from django.conf import settings
+from django.utils.deprecation import MiddlewareMixin
+from django.http import HttpResponseForbidden
+from django.core.cache import cache
+
+logger = logging.getLogger("dosdefense")
 logger.setLevel(logging.INFO)
 if not logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     logger.addHandler(handler)
-HASH_CHOICE = getattr(settings, "CSRF_DEFENSE_HASH", "SHA256").upper()  # SHA256 o SHA3
-# =====================================================
-# === CONFIGURACIÓN DE INTELIGENCIA DE AMENAZAS (THREAT INTEL) ===
-# =====================================================
-# Fuentes conceptuales públicas para recopilar IPs/CIDR.
-IP_BLACKLIST_SOURCES = [
-    "https://iplists.firehol.org/files/firehol_level1.netset",  # FireHOL level1
-    "https://feodotracker.abuse.ch/downloads/ipblocklist.txt",  # Feodo Tracker
-    "https://check.torproject.org/torbulkexitlist?ip=1.1.1.1"  # Tor exit nodes 
-]
 
-# Cabeceras para simular un navegador en peticiones HTTP a las fuentes.
-SCRAPING_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-}
+# =========================
+# Settings (con defaults)
+# =========================
+DOS_LIMITE_PETICIONES = int(getattr(settings, "DOS_LIMITE_PETICIONES", 120))      # req/VENTANA
+DOS_VENTANA_SEGUNDOS = int(getattr(settings, "DOS_VENTANA_SEGUNDOS", 60))        # segundos
+DOS_TIEMPO_BLOQUEO = int(getattr(settings, "DOS_TIEMPO_BLOQUEO", 300))           # segundos
+DOS_TRUSTED_IPS = list(getattr(settings, "DOS_TRUSTED_IPS", []))
 
-# =====================================================
-# === FUNCIONES DE INTELIGENCIA DE AMENAZAS ===
-# =====================================================
-def fetch_and_parse_blacklists() -> Set[str]:
-    """
-    descarga y parseo de listas negras externas.
-    Devuelve un conjunto de IPs y entradas CIDR como strings.
-    """
-    global_blacklist: Set[str] = set()
-    # Regex que captura IPv4 y opcionalmente el sufijo /NN para CIDR.
-    ip_pattern = re.compile(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?:/\d{1,2})?\b')
+DOS_PESO = float(getattr(settings, "DOS_PESO", 0.6))
+DOS_PESO_BLACKLIST = float(getattr(settings, "DOS_PESO_BLACKLIST", 0.15))        # 👈 baja para evitar falsos positivos
+DOS_PESO_HEURISTICA = float(getattr(settings, "DOS_PESO_HEURISTICA", 0.25))      # heurística solo si hay señales
+DOS_UMBRAL_BLOQUEO = float(getattr(settings, "DOS_UMBRAL_BLOQUEO", 0.8))
 
-    for url in IP_BLACKLIST_SOURCES:
-        try:
-            # Solicita la fuente externa con timeout.
-            response = requests.get(url, headers=SCRAPING_HEADERS, timeout=15)
-            response.raise_for_status()
-            # Extrae todas las coincidencias de IP/CIDR del texto retornado.
-            found_ips = ip_pattern.findall(response.text)
-            # Limpieza: eliminar direcciones no válidas obvias.
-            cleaned_ips = {ip for ip in found_ips if ip not in ('0.0.0.0', '255.255.255.255')}
-            # Actualizar la lista global
-            global_blacklist.update(cleaned_ips)
-        except requests.exceptions.RequestException as e:
-            logger.error(f"[Threat Intel] Error de conexión con {url}: {e}")
-        except Exception as e:
-            logger.error(f"[Threat Intel] Error inesperado al parsear {url}: {e}")
+DOS_LIMITE_ENDPOINTS = int(getattr(settings, "DOS_LIMITE_ENDPOINTS", 80))
 
-    # Evitar incluir loopback por error.
-    if '127.0.0.1' in global_blacklist:
-        global_blacklist.remove('127.0.0.1')
+# Nuevo: umbral de warning real (para no spamear logs)
+DOS_WARN_RATIO = float(getattr(settings, "DOS_WARN_RATIO", 0.75))  # 75% del umbral
+DOS_WARN_MIN_SCORE = float(getattr(settings, "DOS_WARN_MIN_SCORE", 0.20))  # no warn si score es minúsculo
+DOS_WARN_MIN_REQ = int(getattr(settings, "DOS_WARN_MIN_REQ", max(10, int(DOS_LIMITE_PETICIONES * 0.2))))
 
-    return global_blacklist
+# Claves cache
+DOS_BLOCK_KEY = getattr(settings, "DOS_BLOCK_KEY_PREFIX", "dos:block:")
+DOS_RATE_KEY = getattr(settings, "DOS_RATE_KEY_PREFIX", "dos:rate:")
+DOS_EP_KEY = getattr(settings, "DOS_EP_KEY_PREFIX", "dos:endpoints:")
 
-def check_ip_in_advanced_blacklist(client_ip: str, global_blacklist_cidrs: Set[str]) -> bool:
-    """
-    Comprueba si una IP cliente está en la blacklist, soportando entradas individuales y CIDR.
-    - Primero compara entradas exactas.
-    - Luego iterar sobre entradas CIDR y comprobar pertenencia.
-    """
-    if not global_blacklist_cidrs:
-        return False
-
-    try:
-        ip_a_chequear = IPv4Address(client_ip)  # Validar/convertir la IP cliente.
-        # Chequeo rápido: coincidencia exacta en la lista.
-        if client_ip in global_blacklist_cidrs:
-            return True
-        # Chequeo de cada entrada CIDR (si contiene '/').
-        for cidr_entry in global_blacklist_cidrs:
-            if '/' in cidr_entry:
-                try:
-                    if ip_a_chequear in IPv4Network(cidr_entry, strict=False):
-                        return True
-                except ValueError:
-                    # Entrada no válida como CIDR -> ignorar y continuar.
-                    continue
-        return False
-    except ValueError:
-        # IP inválida / no IPv4.
-        logger.error(f"IP del cliente inválida o no IPv4: {client_ip}")
-        return False
-
-# =====================================================
-# === PARÁMETROS DE CONFIGURACIÓN BASE Y SCORE ===
-# =====================================================
-# Parámetros configurables vía settings de Django (con valores por defecto).
-LIMITE_PETICIONES = getattr(settings, "DOS_LIMITE_PETICIONES", 100)  # Req por ventana antes de considerar DoS.
-VENTANA_SEGUNDOS = getattr(settings, "DOS_VENTANA_SEGUNDOS", 60)  # Duración de la ventana en segundos.
-PESO_DOS = getattr(settings, "DOS_PESO", 0.6)  # Peso del componente tasa en el score.
-LIMITE_ENDPOINTS_DISTINTOS = getattr(settings, "DOS_LIMITE_ENDPOINTS", 50)  # Umbral de endpoints distintos.
-TRUSTED_IPS = getattr(settings, "DOS_TRUSTED_IPS", [])  # IPs exentas.
-TIEMPO_BLOQUEO_SEGUNDOS = getattr(settings, "DOS_TIEMPO_BLOQUEO", 300)  # Duración del bloqueo temporal.
-
-# Parámetros para score avanzado (blacklist + heurística)
-PESO_BLACKLIST = getattr(settings, "DOS_PESO_BLACKLIST", 0.3)
-PESO_HEURISTICA = getattr(settings, "DOS_PESO_HEURISTICA", 0.1)
-UMBRAL_BLOQUEO = getattr(settings, "DOS_UMBRAL_BLOQUEO", 0.8)  # Umbral absoluto para bloquear.
-
-# === CARGA INICIAL DE LA LISTA NEGRA ===
-try:
-    IP_BLACKLIST: Set[str] = fetch_and_parse_blacklists()
-    output_filename = "blacklist_cargada.txt"
-    # Persistir snapshot local para inspección/debug.
-    with open(output_filename, 'w') as f:
-        for ip in sorted(list(IP_BLACKLIST)):
-            f.write(f"{ip}\n")
-    logger.info(f"Lista Negra Externa cargada y guardada con {len(IP_BLACKLIST)} IPs/CIDR.")
-except Exception as e:
-    logger.error(f"Error al cargar la IP Blacklist: {e}. Usando lista vacía.")
-    IP_BLACKLIST = set()
-
-# =====================================================
-# === REGISTRO TEMPORAL EN MEMORIA ===
-# =====================================================
-# Estructuras en memoria para llevar contadores/ventanas por IP.
-REGISTRO_SOLICITUDES: Dict[str, deque] = {}  # mapa IP -> deque(timestamps)
-REGISTRO_ENDPOINTS: Dict[str, set] = {}  # mapa IP -> set(paths accedidos)
-BLOQUEOS_TEMPORALES: Dict[str, float] = {}  # mapa IP -> timestamp_de_desbloqueo
-
-# =====================================================
-# === FUNCIONES AUXILIARES ===
-# =====================================================
+# =========================
+# Helpers
+# =========================
 def get_client_ip(request) -> str:
-    """Extrae la IP cliente, respetando X-Forwarded-For si está presente."""
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        # Tomar la primera IP de la lista (cliente original).
-        return x_forwarded_for.split(",")[0].strip()
-    # Fallback a REMOTE_ADDR o "0.0.0.0" si no existe.
+    """
+    OJO: en proxies (Render/Nginx) la IP real suele venir en X-Forwarded-For
+    """
+    xff = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if xff:
+        return xff.split(",")[0].strip()
     return request.META.get("REMOTE_ADDR", "") or "0.0.0.0"
 
-def limpiar_registro_global():
+
+def compute_actor_id(request) -> Tuple[str, str]:
     """
-    Limpia entradas inactivas del registro global y desbloquea ips cuyo tiempo expiró.
-    - Remueve IPs con última actividad mayor que 'expiracion'.
-    - Remueve bloqueos temporales expirados.
+    Actor = usuario autenticado o fingerprint (para login/anon).
+    Esto evita falsos positivos cuando muchos usuarios comparten la misma IP.
+    Retorna: (actor_key, actor_type)
     """
-    ahora = time.time()
-    expiracion = VENTANA_SEGUNDOS * 2  # Considerar inactivo si sin actividad por 2*ventana.
-    inactivas = []
+    # 1) Usuario autenticado
+    try:
+        user = getattr(request, "user", None)
+        if user and getattr(user, "is_authenticated", False):
+            return f"user:{user.pk}", "user"
+    except Exception:
+        pass
 
-    # Buscar IPs inactivas
-    for ip, tiempos in REGISTRO_SOLICITUDES.items():
-        if tiempos and ahora - tiempos[-1] > expiracion:
-            inactivas.append(ip)
+    # 2) Fingerprint (si lo tienes en tu proyecto)
+    #    Si ya tienes get_attacker_fingerprint(request) úsalo directamente.
+    try:
+        from GuardianUnivalle_Benito_Yucra.detectores.detector_dos import get_attacker_fingerprint  # si está en el mismo módulo, quítalo
+    except Exception:
+        get_attacker_fingerprint = None
 
-    # Eliminar IPs inactivas del registro
-    for ip in inactivas:
-        REGISTRO_SOLICITUDES.pop(ip, None)
-        REGISTRO_ENDPOINTS.pop(ip, None)
+    if get_attacker_fingerprint:
+        fp = get_attacker_fingerprint(request)
+        if fp:
+            return f"fp:{fp}", "fingerprint"
 
-    # Desbloquear IPs cuyo tiempo de bloqueo expiró
-    ips_a_desbloquear = [ip for ip, tiempo_desbloqueo in BLOQUEOS_TEMPORALES.items() if ahora > tiempo_desbloqueo]
-    for ip in ips_a_desbloquear:
-        BLOQUEOS_TEMPORALES.pop(ip, None)
-        logger.info(f"[Desbloqueo] IP {ip} desbloqueada automáticamente.")
+    # 3) Fallback: UA + Accept + path (menos robusto)
+    ua = request.META.get("HTTP_USER_AGENT", "")[:200]
+    acc = request.META.get("HTTP_ACCEPT", "")[:100]
+    lang = request.META.get("HTTP_ACCEPT_LANGUAGE", "")[:50]
+    path = request.path
+    raw = json.dumps({"ua": ua, "acc": acc, "lang": lang, "path": path}, ensure_ascii=False)
+    # hash simple (no crypto) — suficiente como fallback
+    actor = str(abs(hash(raw)))
+    return f"anon:{actor}", "anon"
 
-def limpiar_registro(ip: str):
-    """Eliminar timestamps antiguos fuera de la ventana deslizante para la IP dada."""
-    ahora = time.time()
-    if ip not in REGISTRO_SOLICITUDES:
-        REGISTRO_SOLICITUDES[ip] = deque()
-    tiempos = REGISTRO_SOLICITUDES[ip]
-    # Pop left mientras el timestamp más antiguo esté fuera de la ventana.
-    while tiempos and ahora - tiempos[0] > VENTANA_SEGUNDOS:
-        tiempos.popleft()
 
-def calcular_nivel_amenaza_dos(tasa_peticion: int, limite: int = LIMITE_PETICIONES) -> float:
-    """
-    Calcula componente de score basado en tasa de peticiones.
-    - Normaliza respecto al límite y aplica peso PESO_DOS.
-    - Clampa el resultado entre 0.0 y 1.0 y lo redondea a 3 decimales.
-    """
-    proporcion = tasa_peticion / max(limite, 1)
-    s_dos = PESO_DOS * min(proporcion, 2.0)
-    return round(min(s_dos, 1.0), 3)
-
-# =====================================================
-# === FUNCIONES INTERNAS DE SEGURIDAD Y AUDITORÍA ===
-# =====================================================
-def limitar_peticion(usuario_id: str):
-    """Aplica bloqueo temporal a una IP y registra evento en logs."""
-    ahora = time.time()
-    tiempo_desbloqueo = ahora + TIEMPO_BLOQUEO_SEGUNDOS
-    BLOQUEOS_TEMPORALES[usuario_id] = tiempo_desbloqueo
-    logger.warning(f"[Bloqueo Activo] IP {usuario_id} bloqueada temporalmente hasta {time.ctime(tiempo_desbloqueo)}")
-
-def registrar_evento(tipo: str, descripcion: str, severidad: str = "MEDIA"):
-    """Registra un evento de auditoría (simulado) en logs en formato JSON."""
-    evento = {
-        "tipo": tipo,
-        "descripcion": descripcion,
-        "severidad": severidad,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    logger.info(f"[AUDITORÍA] {json.dumps(evento, ensure_ascii=False)}")
-
-def detectar_dos(ip: str, tasa_peticion: int, limite: int = LIMITE_PETICIONES) -> bool:
-    """
-    Evaluación simple de DoS por tasa:
-    - Si supera el límite -> registrar evento ALTA y bloquear.
-    - Si supera 75% del límite -> registrar advertencia MEDIA.
-    """
-    if tasa_peticion > limite:
-        registrar_evento(tipo="DoS", descripcion=f"Alta tasa de peticiones desde {ip}: {tasa_peticion} req/min (límite {limite})", severidad="ALTA")
-        limitar_peticion(usuario_id=ip)
+def is_blocked(actor_key: str, client_ip: str) -> bool:
+    # Bloqueo por actor (principal)
+    if cache.get(f"{DOS_BLOCK_KEY}{actor_key}"):
         return True
-    elif tasa_peticion > limite * 0.75:
-        registrar_evento(tipo="DoS", descripcion=f"Posible saturación desde {ip}: {tasa_peticion} req/min", severidad="MEDIA")
+    # Respaldo: bloqueo por IP (opcional)
+    if cache.get(f"{DOS_BLOCK_KEY}ip:{client_ip}"):
+        return True
     return False
 
-def analizar_headers_avanzado(user_agent: str, referer: str) -> List[str]:
-    """
-    Heurística para detectar user-agents automatizados o referers sospechosos.
-    Devuelve lista de issues detectados (vacía si no hay).
-    """
-    sospechas = []
-    # User-Agent vacio o muy corto o el user-agent por defecto de requests -> sospechoso.
-    if not user_agent or len(user_agent) < 10 or user_agent.lower() == "python-requests/2.25.1":
-        sospechas.append("User-Agent vacío/Defecto")
 
-    # Palabras clave usadas por herramientas de automatización.
-    automation_keywords = ["curl", "python", "wget", "bot", "spider", "scraper", "headless", "phantom"]
-    if any(patron in user_agent.lower() for patron in automation_keywords):
+def block_actor(actor_key: str, client_ip: str, seconds: int) -> None:
+    cache.set(f"{DOS_BLOCK_KEY}{actor_key}", True, timeout=seconds)
+    # Respaldo: bloquea IP por menos tiempo (para frenar bots NAT)
+    cache.set(f"{DOS_BLOCK_KEY}ip:{client_ip}", True, timeout=min(seconds, 60))
+
+
+def analizar_headers_avanzado(user_agent: str, referer: str) -> List[str]:
+    sospechas = []
+    if not user_agent or len(user_agent) < 10 or user_agent.lower().startswith("python-requests"):
+        sospechas.append("User-Agent vacío/automatizado")
+
+    automation_keywords = ["curl", "wget", "bot", "spider", "scraper", "headless", "phantom", "selenium"]
+    ua_low = (user_agent or "").lower()
+    if any(k in ua_low for k in automation_keywords):
         sospechas.append("Herramienta de automatización detectada")
 
-    # Referer que explícitamente sugiere escaneo/ataque.
-    if referer and any(palabra in referer.lower() for palabra in ["attack", "scan"]):
+    ref_low = (referer or "").lower()
+    if referer and any(k in ref_low for k in ["attack", "scan", "sqlmap", "nmap"]):
         sospechas.append("Referer indicando abuso")
 
     return sospechas
-def compute_hash(data: bytes) -> str:
-    if HASH_CHOICE == "SHA3":
-        h = hashes.Hash(hashes.SHA3_256())
-    else:
-        h = hashes.Hash(hashes.SHA256())
-    h.update(data)
-    return base64.b64encode(h.finalize()).decode()
 
-def get_attacker_fingerprint(request, payload_summary=None):
-    ua = request.META.get("HTTP_USER_AGENT", "")
-    accept = request.META.get("HTTP_ACCEPT", "")
-    lang = request.META.get("HTTP_ACCEPT_LANGUAGE", "")
-    path = request.path
 
-    raw = json.dumps({
-        "ua": ua[:200],
-        "accept": accept[:100],
-        "lang": lang[:50],
-        "path": path,
-        "payload": payload_summary[:3] if payload_summary else [],
-    }, ensure_ascii=False)
+def calc_dos_score(rate: int, limit: int) -> float:
+    # sube proporcionalmente hasta 2x
+    propor = rate / max(limit, 1)
+    return round(min(DOS_PESO * min(propor, 2.0), 1.0), 3)
 
-    return compute_hash(raw.encode())
 
-def is_fingerprint_blocked(fingerprint: str) -> bool:
-    if not fingerprint:
-        return False
-    return bool(cache.get(f"dos_block_fingerprint:{fingerprint}"))  # Prefijo "dos_" para consistencia
+def rate_window_keys(actor_key: str, now: float) -> List[str]:
+    """
+    Ventana deslizante por buckets de 1s (simple y efectivo).
+    Guardamos contadores por segundo en cache, sumamos últimos N segundos.
+    """
+    t = int(now)
+    return [f"{DOS_RATE_KEY}{actor_key}:{sec}" for sec in range(t - (DOS_VENTANA_SEGUNDOS - 1), t + 1)]
 
-def cache_block_ip_with_backoff(ip: str, fingerprint: str = ""):
-    if not ip:
-        return 0, 0
-    level_key = f"dos_block:{ip}:level"  # Prefijo "dos_" para consistencia
-    level = cache.get(level_key, 0) or 0
-    level = int(level) + 1
-    cache.set(level_key, level, timeout=60 * 60 * 24 * 7)
-    durations = [0, 60 * 15, 60 * 60, 60 * 60 * 6, 60 * 60 * 24, 60 * 60 * 24 * 7]  # DEFAULT_BACKOFF_LEVELS para DoS
-    idx = min(level, len(durations) - 1)
-    timeout = durations[idx]
-    cache.set(f"dos_block:{ip}", True, timeout=timeout)  # Prefijo "dos_"
-    if fingerprint:  # NUEVO: Bloquea por fingerprint
-        cache.set(f"dos_block_fingerprint:{fingerprint}", True, timeout=timeout)  # Prefijo "dos_"
-    return level, timeout
-# =====================================================
-# === MIDDLEWARE PRINCIPAL DE DEFENSA DoS ===
-# =====================================================
+
+def incr_rate(actor_key: str, now: float) -> int:
+    """
+    Incrementa contador del segundo actual y retorna tasa (suma en ventana).
+    """
+    sec = int(now)
+    key_now = f"{DOS_RATE_KEY}{actor_key}:{sec}"
+
+    try:
+        cache.add(key_now, 0, timeout=DOS_VENTANA_SEGUNDOS + 5)
+        cache.incr(key_now)
+    except Exception:
+        # fallback si backend no soporta incr
+        current = cache.get(key_now, 0) or 0
+        cache.set(key_now, int(current) + 1, timeout=DOS_VENTANA_SEGUNDOS + 5)
+
+    # suma últimos N segundos (barato para N=60)
+    total = 0
+    for k in rate_window_keys(actor_key, now):
+        v = cache.get(k, 0) or 0
+        try:
+            total += int(v)
+        except Exception:
+            pass
+    return total
+
+
+def add_endpoint(actor_key: str, path: str) -> int:
+    """
+    Cuenta endpoints distintos en ventana (simple).
+    """
+    key = f"{DOS_EP_KEY}{actor_key}"
+    endpoints = cache.get(key)
+    if not isinstance(endpoints, list):
+        endpoints = []
+
+    if path not in endpoints:
+        endpoints.append(path)
+
+    # recorta para evitar crecimiento infinito
+    if len(endpoints) > max(DOS_LIMITE_ENDPOINTS * 2, 200):
+        endpoints = endpoints[-max(DOS_LIMITE_ENDPOINTS, 100):]
+
+    cache.set(key, endpoints, timeout=DOS_VENTANA_SEGUNDOS + 10)
+    return len(endpoints)
+
+
+# Si tú ya tienes threat intel/blacklist, integra aquí:
+def get_blacklist_cached():
+    return set()
+
+def check_ip_in_advanced_blacklist(client_ip: str, global_blacklist_cidrs) -> bool:
+    return False
+
+
+# =========================
+# Middleware
+# =========================
 class DOSDefenseMiddleware(MiddlewareMixin):
     """
-    Middleware encargado de:
-    - Mantener ventana deslizante por IP.
-    - Calcular score compuesto (tasa + blacklist + heurística).
-    - Aplicar bloqueos temporales y registrar eventos de auditoría.
+    - Rate limit por actor (user_id o fingerprint) para evitar falsos positivos por NAT/WiFi.
+    - Cache/Redis (funciona multi-worker).
+    - Warning logs solo cuando realmente hay riesgo.
     """
 
     def process_request(self, request):
-        # Limpieza periódica de estructuras en memoria.
-        limpiar_registro_global()
+        now = time.time()
+        client_ip = get_client_ip(request)
 
-        client_ip = get_client_ip(request)  # Obtener IP del cliente.
-
-        # NUEVO: Calcula fingerprint básico y chequea bloqueo
-        fingerprint = get_attacker_fingerprint(request)
-        if is_fingerprint_blocked(fingerprint):
-            warning_message = (
-                "Acceso denegado. Su fingerprint y actividades han sido registradas y monitoreadas. "
-                "Continuar con estos intentos podría resultar en exposición pública, bloqueos permanentes o acciones legales. "
-                "Recomendamos detenerse inmediatamente para evitar riesgos mayores."
-            )
-            logger.warning(f"[DOSBlock:Fingerprint] Fingerprint={fingerprint} IP={client_ip} - Intento persistente de acceso bloqueado.")
-            return HttpResponseForbidden(warning_message)
-
-        # 1. BLOQUEOS Y EXCEPCIONES PREVIAS
-        # Si la IP está en la lista de confianza, no procesar.
-        if client_ip in TRUSTED_IPS:
+        # Allowlist
+        if client_ip in DOS_TRUSTED_IPS:
             return None
 
-        # Si la IP está bloqueada temporalmente, registrar y devolver 403.
-        if client_ip in BLOQUEOS_TEMPORALES and time.time() < BLOQUEOS_TEMPORALES[client_ip]:
-            registrar_evento(tipo="Temporary Block", descripcion=f"Bloqueo temporal por abuso previo: IP {client_ip}.", severidad="ALTA")
+        actor_key, actor_type = compute_actor_id(request)
+
+        # Bloqueo activo
+        if is_blocked(actor_key, client_ip):
+            logger.warning(f"[DOSBlock:Active] actor={actor_key} type={actor_type} ip={client_ip} path={request.path}")
             return HttpResponseForbidden("Acceso denegado temporalmente por comportamiento sospechoso.")
 
-        # Evitar duplicar análisis DoS si XSS/CSRF ya marcaron la request.
-        if (hasattr(request, 'xss_attack_info') or hasattr(request, 'xss_block') or hasattr(request, 'xss_challenge') or
-            hasattr(request, 'csrf_attack_info') or hasattr(request, 'csrf_block') or hasattr(request, 'csrf_challenge')):
-            logger.info(f"[DOSDefense] Solicitud desde IP {client_ip} ya detectada por XSS o CSRF. Saltando análisis DoS para evitar superposición.")
+        # Evitar duplicación si otros detectores ya bloquearon/challengeron
+        if (
+            hasattr(request, "xss_attack_info") or hasattr(request, "xss_block") or hasattr(request, "xss_challenge")
+            or hasattr(request, "csrf_attack_info") or hasattr(request, "csrf_block") or hasattr(request, "csrf_challenge")
+            or hasattr(request, "sql_attack_info") or hasattr(request, "sql_block") or hasattr(request, "sql_challenge")
+        ):
             return None
 
-        # 2. ANÁLISIS DE LA PETICIÓN Y CÁLCULO DE MÉTRICAS BASE
-        user_agent = request.META.get("HTTP_USER_AGENT", "Desconocido")
+        # Datos base
+        user_agent = request.META.get("HTTP_USER_AGENT", "")
         referer = request.META.get("HTTP_REFERER", "")
         path = request.path
 
-        # Actualizar conjunto de endpoints accedidos por la IP y la ventana temporal.
-        REGISTRO_ENDPOINTS.setdefault(client_ip, set()).add(path)
-        limpiar_registro(client_ip)
-        REGISTRO_SOLICITUDES[client_ip].append(time.time())
+        # 1) tasa por actor (no por IP)
+        tasa = incr_rate(actor_key, now)
 
-        tasa = len(REGISTRO_SOLICITUDES[client_ip])  # Conteo de requests en la ventana actual.
+        # 2) endpoints distintos por actor
+        endpoints_distintos = add_endpoint(actor_key, path)
 
-        # 3. CÁLCULO DE LOS COMPONENTES DEL SCORE DE AMENAZA
-        nivel_dos = calcular_nivel_amenaza_dos(tasa)  # Componente por tasa.
-        nivel_blacklist = PESO_BLACKLIST if check_ip_in_advanced_blacklist(client_ip, IP_BLACKLIST) else 0  # Componente blacklist.
-        sospechas_headers = analizar_headers_avanzado(user_agent, referer)  # Heurística headers.
+        # 3) score DoS
+        nivel_dos = calc_dos_score(tasa, DOS_LIMITE_PETICIONES)
 
-        # Puntuaciones simplificadas para headers y endpoints.
-        score_headers = 0.5 if sospechas_headers else 0
-        score_endpoints = 0.5 if len(REGISTRO_ENDPOINTS[client_ip]) > LIMITE_ENDPOINTS_DISTINTOS else 0
-        nivel_heuristica = PESO_HEURISTICA * (score_headers + score_endpoints)
+        # 4) blacklist (bajar peso o condicionar a tasa alta)
+        ip_blacklist = get_blacklist_cached()
+        en_blacklist = check_ip_in_advanced_blacklist(client_ip, ip_blacklist)
 
-        # 4. CÁLCULO DEL SCORE TOTAL Y DECISIÓN DE MITIGACIÓN
-        S_total = nivel_dos + nivel_blacklist + nivel_heuristica
+        # Solo suma blacklist si ya hay presión (evita falsos positivos por ISP)
+        nivel_blacklist = (DOS_PESO_BLACKLIST if en_blacklist and tasa >= DOS_WARN_MIN_REQ else 0.0)
 
-        # Si el score total supera el umbral, bloquear y registrar evento crítico.
-        if S_total >= UMBRAL_BLOQUEO:
-            descripcion_log = [
-                f"Score Total: {S_total:.3f} > Umbral {UMBRAL_BLOQUEO}",
-                f"DoS: {nivel_dos:.3f}, Blacklist: {nivel_blacklist:.3f}, Heurística: {nivel_heuristica:.3f}"
-            ]
-            registrar_evento(tipo="Bloqueo por Score Total", descripcion=" ; ".join(descripcion_log), severidad="CRÍTICA")
-            limitar_peticion(usuario_id=client_ip)
-            return HttpResponseForbidden("Acceso denegado por alto Score de Amenaza.")
+        # 5) heurística (solo si hay señales)
+        sospechas_headers = analizar_headers_avanzado(user_agent, referer)
+        score_headers = 0.5 if sospechas_headers else 0.0
+        score_endpoints = 0.5 if endpoints_distintos > DOS_LIMITE_ENDPOINTS else 0.0
+        nivel_heuristica = DOS_PESO_HEURISTICA * (score_headers + score_endpoints)
 
-        # 5. REGISTRO DE ADVERTENCIA (Si no se bloquea, pero hay sospecha)
-        if S_total > UMBRAL_BLOQUEO * 0.75 or (nivel_dos > 0) or len(sospechas_headers) > 0:
-            descripcion = sospechas_headers.copy()
-            if score_endpoints > 0:
-                descripcion.append("Número anormal de endpoints distintos accedidos (posible escaneo/scraping)")
+        S_total = round(nivel_dos + nivel_blacklist + nivel_heuristica, 3)
 
-            descripcion.insert(0, f"Score Total: {S_total:.3f} (Tasa: {tasa} req/min)")
+        # 6) Bloqueo
+        if S_total >= DOS_UMBRAL_BLOQUEO:
+            block_actor(actor_key, client_ip, DOS_TIEMPO_BLOQUEO)
+
+            logger.error(
+                "[DOSBlock] actor=%s type=%s ip=%s score=%s tasa=%s/%s endpoints=%s/%s path=%s susp=%s",
+                actor_key, actor_type, client_ip, f"{S_total:.3f}",
+                tasa, DOS_LIMITE_PETICIONES, endpoints_distintos, DOS_LIMITE_ENDPOINTS,
+                path, sospechas_headers,
+            )
+            return HttpResponseForbidden("Acceso denegado por alto Score de Amenaza (DoS).")
+
+        # 7) Warning (SIN SPAM): solo si de verdad se acerca al umbral o hay señales fuertes
+        warn_condition = (
+            (S_total >= max(DOS_WARN_MIN_SCORE, DOS_UMBRAL_BLOQUEO * DOS_WARN_RATIO))
+            or (tasa >= max(DOS_WARN_MIN_REQ, int(DOS_LIMITE_PETICIONES * DOS_WARN_RATIO)))
+            or bool(sospechas_headers)
+            or (endpoints_distintos > DOS_LIMITE_ENDPOINTS)
+        )
+
+        if warn_condition:
+            descripcion = []
+            descripcion.append(f"Score Total: {S_total:.3f} (Tasa: {tasa} en {DOS_VENTANA_SEGUNDOS}s)")
+            if en_blacklist and nivel_blacklist > 0:
+                descripcion.append("IP en blacklist (ponderada)")
+            if sospechas_headers:
+                descripcion.extend(sospechas_headers)
+            if endpoints_distintos > DOS_LIMITE_ENDPOINTS:
+                descripcion.append("Muchos endpoints distintos (posible scraping/escaneo)")
             descripcion.append(f"Ruta: {path}")
 
-            logger.warning("Tráfico Sospechoso desde IP %s: %s", client_ip, " ; ".join(descripcion))
-            # NUEVO: Recalcula fingerprint con payload_summary (simulado con datos de headers/path)
-            payload_summary = [{"field": "user_agent", "snippet": user_agent[:300], "score": score_headers}, {"field": "path", "snippet": path, "score": score_endpoints}]
-            fingerprint = get_attacker_fingerprint(request, payload_summary)
+            logger.warning(
+                "Tráfico Sospechoso actor=%s type=%s ip=%s: %s",
+                actor_key, actor_type, client_ip, " ; ".join(descripcion)
+            )
 
-            # Anexar info al request para que otros middlewares / views puedan actuar.
             request.dos_attack_info = {
+                "actor": actor_key,
+                "actor_type": actor_type,
                 "ip": client_ip,
                 "tipos": ["DoS", "Scraping/Escaneo"],
                 "descripcion": descripcion,
                 "payload": json.dumps({"user_agent": user_agent, "referer": referer, "path": path}),
                 "score": S_total,
-                "fingerprint": fingerprint,  # NUEVO: Incluye fingerprint
+                "tasa": tasa,
+                "endpoints_distintos": endpoints_distintos,
+                "blocked": False,
             }
-        # No interrumpir el flujo normal si no se bloquea.
+
         return None

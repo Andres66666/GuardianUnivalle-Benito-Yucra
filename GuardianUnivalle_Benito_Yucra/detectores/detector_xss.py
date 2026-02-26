@@ -420,30 +420,31 @@ def extract_body_as_map(request) -> Dict[str, Any]:  # Extrae body como dict des
 # ----------------------------
 # Detect XSS en valor
 # ----------------------------
-# analiza un valor buscando patrones XSS, calcula un score y devuelve (score, descripciones, patrones).
-def detect_xss_in_value(value: str, is_sensitive: bool = False) -> Tuple[float, List[str], List[str]]:  # Detecta XSS en un valor y retorna (score, descripciones, patrones)
-    if not value:  # Si el valor está vacío, retorna sin detecciones
+def detect_xss_in_value(value: str, is_sensitive: bool = False) -> Tuple[float, List[str], List[str]]:
+    if not value:
         return 0.0, [], []
-    score_total = 0.0  # Acumula puntaje de detección
-    descripcion = []  # Lista de descripciones de firmas encontradas
-    matches = []  # Patrones que coincidieron
-    value = value.lower().strip()  # Normaliza a minúsculas y elimina espacios alrededor
-    if _BLEACH_AVAILABLE:  # Si bleach está instalado, sanitiza y penaliza cambios
-        cleaned = bleach.clean(value, strip=True)  # Limpia el valor con bleach
-        if cleaned != value:  # Si bleach modificó el contenido, sumamos puntaje
-            score_total += 0.5  # Penalización por alteración de sanitización
-            descripcion.append("Contenido alterado por sanitización (bleach)")  # Añade descripción
-    for patt, msg, weight in XSS_PATTERNS:  # Itera patrones XSS con su peso
-        occ = len(patt.findall(value))  # Cuenta ocurrencias del patrón
-        if occ > 0:  # Si hay ocurrencias
-            added = sum(weight * (0.5 ** i) for i in range(occ))  # Aplica decaimiento por múltiples ocurrencias
-            if is_sensitive:  # Si el campo es sensible, aplica descuento
-                added *= SENSITIVE_DISCOUNT  # Multiplica por factor de descuento
-            score_total += added  # Acumula puntaje
-            descripcion.append(msg)  # Añade mensaje descriptivo del patrón
-            matches.append(patt.pattern)  # Guarda el patrón coincidente
-    return round(score_total, 3), descripcion, matches  # Retorna puntaje redondeado y listas
+    score_total = 0.0
+    descripcion = []
+    matches = []
+    value = value.lower().strip()
 
+    if _BLEACH_AVAILABLE and (not is_sensitive):
+        cleaned = bleach.clean(value, strip=True)
+        if cleaned != value:
+            score_total += 0.5
+            descripcion.append("Contenido alterado por sanitización (bleach)")
+
+    for patt, msg, weight in XSS_PATTERNS:
+        occ = len(patt.findall(value))
+        if occ > 0:
+            added = sum(weight * (0.5 ** i) for i in range(occ))
+            if is_sensitive:
+                added *= SENSITIVE_DISCOUNT
+            score_total += added
+            descripcion.append(msg)
+            matches.append(patt.pattern)
+
+    return round(score_total, 3), descripcion, matches
 
 # ----------------------------
 # Conversión a probabilidad
@@ -633,22 +634,17 @@ class XSSDefenseCryptoMiddleware(MiddlewareMixin):
                 s, descs, matches = detect_xss_in_value(vtext, is_sensitive)  # Detecta XSS en el valor
                 total_score += s  # Acumula puntaje
                 all_descriptions.extend(descs)  # Agrega descripciones
-                for m in matches:
-                    q = weight_to_prob(s)  # Convierte peso a probabilidad
-                    global_prob_list.append(q)  # Añade a lista global
                 if s > 0:
-                    payload_summary.append({"field": key, "snippet": vtext[:300], "sensitive": is_sensitive})  # Resumen del payload si detectado
+                    global_prob_list.append(weight_to_prob(s))
+                    payload_summary.append({"field": key, "snippet": vtext[:300], "sensitive": is_sensitive})
         else:  # Si data no es dict (raw), tratar como texto
             raw = str(data)  # Forzar a string
             s, descs, matches = detect_xss_in_value(raw)  # Detectar en raw
             total_score += s
             all_descriptions.extend(descs)
-            for m in matches:
-                q = weight_to_prob(s)
-                global_prob_list.append(q)
             if s > 0:
-                payload_summary.append({"field": "raw", "snippet": raw[:500], "sensitive": False})  # Resumen para raw
-
+                global_prob_list.append(weight_to_prob(s))
+                payload_summary.append({"field": "raw", "snippet": raw[:500], "sensitive": False})
         if total_score == 0:  # Si no hay hallazgos, terminar
             return None
 

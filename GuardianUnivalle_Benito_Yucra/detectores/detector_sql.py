@@ -1,15 +1,3 @@
-"""
-SQLI Defense Middleware con criptografía (AES-GCM / ChaCha20-Poly1305, HMAC-SHA256, Argon2id)
-- Instala: cryptography, argon2-cffi
-- Configuraciones mínimas en settings.py:
-    SQLI_DEFENSE_MASTER_KEY = base64.b64encode(os.urandom(32)).decode()  # ejemplo
-    SQLI_DEFENSE_AEAD = "AESGCM"  # o "CHACHA20"
-    SQLI_DEFENSE_ARGON2 = {...}  # opcional, parámetros de Argon2id
-    SQLI_DEFENSE_P_ATTACK_BLOCK = 0.97
-    SQLI_DEFENSE_TRUSTED_IPS = []
-    SQLI_DEFENSE_TRUSTED_URLS = []
-    SQLI_DEFENSE_USE_CHALLENGE = False
-"""
 
 import base64        # Permite codificar/decodificar datos en Base64, útil para manejar claves o tokens.
 import os            # Proporciona funciones del sistema operativo, como generar bytes aleatorios (os.urandom).
@@ -693,6 +681,8 @@ class SQLIDefenseCryptoMiddleware(MiddlewareMixin):
             "p_attack": round(p_attack, 3),
             "url": request.build_absolute_uri(),
             "fingerprint": fingerprint,  # NUEVO
+            "blocked": False,
+            "action": "detect",
         }
         # registrar evento cifrado
         try:
