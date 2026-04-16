@@ -4,7 +4,6 @@ import json
 
 LOG_FILE = "auditoria_guardian.log"
 
-
 def registrar_evento(
     tipo: str,
     descripcion: str = "",
@@ -20,7 +19,6 @@ def registrar_evento(
             "extra": extra or {},
         }
 
-        # ✅ Crear carpeta solo si hay directorio en la ruta
         log_dir = os.path.dirname(LOG_FILE)
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
@@ -33,7 +31,6 @@ def registrar_evento(
 
 
 def generar_reporte() -> str:
-    """Devuelve todo el contenido del archivo de auditoría."""
     if not os.path.exists(LOG_FILE):
         return "No hay registros aún."
     with open(LOG_FILE, "r", encoding="utf-8") as f:
